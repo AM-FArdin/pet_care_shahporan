@@ -1,14 +1,14 @@
 import { db, isDbConfigured } from "@/lib/db";
 import { ensureTablesExist } from "@/lib/db/init";
 import { owners } from "@/lib/db/schema";
-import { ilike, or } from "drizzle-orm";
+import { eq, like, or } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
-  if (!isDbConfigured) {
+  if (!isDbConfigured || !db) {
     return NextResponse.json(
       {
-        error: "Database not configured. Please set DATABASE_URL in your Vercel Project Settings > Environment Variables.",
+        error: "MySQL database not configured. Please set DATABASE_URL in .env.local (e.g. mysql://user:password@localhost:3306/shahporan_vet)",
         notConfigured: true,
       },
       { status: 503 }
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
         ? db
             .select()
             .from(owners)
-            .where(or(ilike(owners.name, `%${q}%`), ilike(owners.phone, `%${q}%`)))
+            .where(or(like(owners.name, `%${q}%`), like(owners.phone, `%${q}%`)))
             .orderBy(owners.name)
         : db.select().from(owners).orderBy(owners.name);
 
@@ -32,7 +32,6 @@ export async function GET(req: NextRequest) {
       const result = await fetchList();
       return NextResponse.json(result);
     } catch {
-      // Table may not exist yet, auto-initialize and retry once
       await ensureTablesExist();
       const result = await fetchList();
       return NextResponse.json(result);
@@ -45,10 +44,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isDbConfigured) {
+  if (!isDbConfigured || !db) {
     return NextResponse.json(
       {
-        error: "Database not configured. Please set DATABASE_URL in your Vercel Project Settings > Environment Variables.",
+        error: "MySQL database not configured.",
         notConfigured: true,
       },
       { status: 503 }
@@ -58,12 +57,14 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     try {
-      const [owner] = await db.insert(owners).values(body).returning();
-      return NextResponse.json(owner, { status: 201 });
+      const [res] = await db.insert(owners).values(body);
+      const [newOwner] = await db.select().from(owners).where(eq(owners.id, (res as { insertId: number }).insertId));
+      return NextResponse.json(newOwner || { id: (res as { insertId: number }).insertId, ...body }, { status: 201 });
     } catch {
       await ensureTablesExist();
-      const [owner] = await db.insert(owners).values(body).returning();
-      return NextResponse.json(owner, { status: 201 });
+      const [res] = await db.insert(owners).values(body);
+      const [newOwner] = await db.select().from(owners).where(eq(owners.id, (res as { insertId: number }).insertId));
+      return NextResponse.json(newOwner || { id: (res as { insertId: number }).insertId, ...body }, { status: 201 });
     }
   } catch (error: unknown) {
     console.error("Error in POST /api/owners:", error);

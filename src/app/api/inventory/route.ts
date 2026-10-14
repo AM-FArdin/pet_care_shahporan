@@ -1,13 +1,14 @@
 import { db, isDbConfigured } from "@/lib/db";
 import { ensureTablesExist } from "@/lib/db/init";
 import { inventory } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET() {
-  if (!isDbConfigured) {
+  if (!isDbConfigured || !db) {
     return NextResponse.json(
       {
-        error: "Database not configured. Please set DATABASE_URL in your Vercel Project Settings > Environment Variables.",
+        error: "MySQL database not configured. Please set DATABASE_URL in .env.local (e.g. mysql://user:password@localhost:3306/shahporan_vet)",
         notConfigured: true,
       },
       { status: 503 }
@@ -33,10 +34,10 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isDbConfigured) {
+  if (!isDbConfigured || !db) {
     return NextResponse.json(
       {
-        error: "Database not configured. Please set DATABASE_URL in your Vercel Project Settings > Environment Variables.",
+        error: "MySQL database not configured.",
         notConfigured: true,
       },
       { status: 503 }
@@ -46,12 +47,14 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     try {
-      const [item] = await db.insert(inventory).values(body).returning();
-      return NextResponse.json(item, { status: 201 });
+      const [res] = await db.insert(inventory).values(body);
+      const [item] = await db.select().from(inventory).where(eq(inventory.id, (res as { insertId: number }).insertId));
+      return NextResponse.json(item || { id: (res as { insertId: number }).insertId, ...body }, { status: 201 });
     } catch {
       await ensureTablesExist();
-      const [item] = await db.insert(inventory).values(body).returning();
-      return NextResponse.json(item, { status: 201 });
+      const [res] = await db.insert(inventory).values(body);
+      const [item] = await db.select().from(inventory).where(eq(inventory.id, (res as { insertId: number }).insertId));
+      return NextResponse.json(item || { id: (res as { insertId: number }).insertId, ...body }, { status: 201 });
     }
   } catch (error: unknown) {
     console.error("Error in POST /api/inventory:", error);

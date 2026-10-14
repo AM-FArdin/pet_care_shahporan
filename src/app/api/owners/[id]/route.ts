@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  if (!isDbConfigured) {
+  if (!isDbConfigured || !db) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
   }
 
@@ -31,14 +31,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  if (!isDbConfigured) {
+  if (!isDbConfigured || !db) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
   }
 
   const { id } = await params;
   try {
     const body = await req.json();
-    const [updated] = await db.update(owners).set({ ...body, updatedAt: new Date() }).where(eq(owners.id, parseInt(id))).returning();
+    await db.update(owners).set({ ...body, updatedAt: new Date() }).where(eq(owners.id, parseInt(id)));
+    const [updated] = await db.select().from(owners).where(eq(owners.id, parseInt(id)));
     return NextResponse.json(updated);
   } catch (error) {
     console.error(error);
@@ -47,7 +48,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  if (!isDbConfigured) {
+  if (!isDbConfigured || !db) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
   }
 
