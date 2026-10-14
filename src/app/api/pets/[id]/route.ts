@@ -1,0 +1,27 @@
+import { db } from "@/lib/db";
+import { pets } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  try {
+    const body = await req.json();
+    const [updated] = await db.update(pets).set({ ...body, updatedAt: new Date() }).where(eq(pets.id, parseInt(id))).returning();
+    return NextResponse.json(updated);
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: "Failed to update pet" }, { status: 500 });
+  }
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  try {
+    await db.delete(pets).where(eq(pets.id, parseInt(id)));
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: "Failed to delete pet" }, { status: 500 });
+  }
+}
