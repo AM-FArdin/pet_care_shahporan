@@ -1,6 +1,6 @@
 "use client";
-import { useState, useEffect } from "react";
-import { Plus, Search, Package, AlertTriangle, X, Loader2, Pencil, Trash2, Check } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, Search, Package, AlertTriangle, X, Loader2, Pencil, Trash2, Check, AlertCircle, RefreshCw, CheckCircle2 } from "lucide-react";
 import type { InventoryItem } from "@/lib/db/schema";
 
 const CATEGORIES = ["Vaccine", "Medicine", "Equipment", "Supplies", "Other"];
@@ -28,30 +28,67 @@ export default function InventoryPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [initLoading, setInitLoading] = useState(false);
+  const [initSuccess, setInitSuccess] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [quickEditId, setQuickEditId] = useState<number | null>(null);
   const [quickEditQty, setQuickEditQty] = useState("");
 
-  const fetchItems = async () => {
+  const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/inventory");
-      setItems(await res.json());
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setItems(data);
+        setDbError(null);
+      } else {
+        setItems([]);
+        setDbError(data.error || "Unable to connect to the database.");
+      }
+    } catch {
+      setItems([]);
+      setDbError("Network or server error while connecting to the database.");
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    fetchItems();
+  }, [fetchItems]);
+
+  const handleInitDb = async () => {
+    setInitLoading(true);
+    setInitSuccess(null);
+    try {
+      const res = await fetch("/api/init-db");
+      const data = await res.json();
+      if (data.success) {
+        setInitSuccess("Database tables & initial inventory initialized successfully!");
+        setDbError(null);
+        fetchItems();
+      } else {
+        setDbError(data.error || "Failed to initialize database.");
+      }
+    } catch {
+      setDbError("Failed to trigger database initialization.");
+    } finally {
+      setInitLoading(false);
+    }
   };
 
-  useEffect(() => { fetchItems(); }, []);
+  const safeItems = Array.isArray(items) ? items : [];
 
-  const filtered = items.filter((item) => {
+  const filtered = safeItems.filter((item) => {
     const matchQ = query === "" || item.name.toLowerCase().includes(query.toLowerCase()) || item.category.toLowerCase().includes(query.toLowerCase());
     const matchCat = categoryFilter === "All" || item.category === categoryFilter;
     return matchQ && matchCat;
   });
 
-  const lowStock = items.filter((i) => i.minimumStock !== null && i.quantity <= i.minimumStock);
-  const expiringSoon = items.filter((i) => {
+  const lowStock = safeItems.filter((i) => i.minimumStock !== null && i.quantity <= i.minimumStock);
+  const expiringSoon = safeItems.filter((i) => {
     if (!i.expiryDate) return false;
     const diff = (new Date(i.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
     return diff <= 30 && diff >= 0;
@@ -85,8 +122,18 @@ export default function InventoryPage() {
       const url = editingItem ? `/api/inventory/${editingItem.id}` : "/api/inventory";
       const method = editingItem ? "PUT" : "POST";
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (res.ok) { setShowForm(false); fetchItems(); }
-    } finally { setSaving(false); }
+      const data = await res.json();
+      if (res.ok) {
+        setShowForm(false);
+        fetchItems();
+      } else {
+        alert(data.error || "Failed to save inventory item.");
+      }
+    } catch {
+      alert("Error saving item. Please check database connection.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -129,6 +176,42 @@ export default function InventoryPage() {
         </button>
       </div>
 
+      {/* Database Connection Alert */}
+      {dbError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-800">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 text-sm">
+              <h3 className="font-semibold text-amber-900">Database Connection Notice</h3>
+              <p className="mt-1 text-amber-700 text-xs sm:text-sm">{dbError}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleInitDb}
+                  disabled={initLoading}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1a7f7f] text-white rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50 transition-colors"
+                >
+                  {initLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                  Auto-Initialize Database Tables
+                </button>
+                <button
+                  onClick={fetchItems}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-amber-300 text-amber-900 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors"
+                >
+                  Retry Connection
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {initSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-emerald-800 flex items-center gap-2 text-sm">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+          <span>{initSuccess}</span>
+        </div>
+      )}
+
       {/* Alert badges */}
       {(lowStock.length > 0 || expiringSoon.length > 0) && (
         <div className="flex flex-wrap gap-3">
@@ -150,10 +233,10 @@ export default function InventoryPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Total Items", value: items.length, color: "text-[#1a2f5e]" },
+          { label: "Total Items", value: safeItems.length, color: "text-[#1a2f5e]" },
           { label: "Low Stock", value: lowStock.length, color: "text-red-500" },
           { label: "Expiring Soon", value: expiringSoon.length, color: "text-amber-500" },
-          { label: "Categories", value: CATEGORIES.filter(c => items.some(i => i.category === c)).length, color: "text-teal-600" },
+          { label: "Categories", value: CATEGORIES.filter(c => safeItems.some(i => i.category === c)).length, color: "text-teal-600" },
         ].map((stat) => (
           <div key={stat.label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
             <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
@@ -197,6 +280,9 @@ export default function InventoryPage() {
           <div className="text-center py-14">
             <Package size={36} className="mx-auto text-gray-300 mb-3" />
             <p className="text-gray-500 text-sm font-medium">No items found</p>
+            {dbError && (
+              <p className="text-gray-400 text-xs mt-1">Set up your database to view inventory items.</p>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">

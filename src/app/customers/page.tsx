@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Search, Plus, Phone, User, ChevronRight, X, Loader2 } from "lucide-react";
+import { Search, Plus, Phone, User, ChevronRight, X, Loader2, AlertCircle, RefreshCw, CheckCircle2 } from "lucide-react";
 import type { Owner } from "@/lib/db/schema";
 
 export default function CustomersPage() {
@@ -10,6 +10,9 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [initLoading, setInitLoading] = useState(false);
+  const [initSuccess, setInitSuccess] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", email: "", address: "" });
 
   const fetchOwners = useCallback(async (q: string) => {
@@ -17,7 +20,16 @@ export default function CustomersPage() {
     try {
       const res = await fetch(`/api/owners?q=${encodeURIComponent(q)}`);
       const data = await res.json();
-      setOwners(data);
+      if (Array.isArray(data)) {
+        setOwners(data);
+        setDbError(null);
+      } else {
+        setOwners([]);
+        setDbError(data.error || "Unable to connect to the database.");
+      }
+    } catch {
+      setOwners([]);
+      setDbError("Network or server error while connecting to the database.");
     } finally {
       setLoading(false);
     }
@@ -28,6 +40,26 @@ export default function CustomersPage() {
     return () => clearTimeout(timer);
   }, [query, fetchOwners]);
 
+  const handleInitDb = async () => {
+    setInitLoading(true);
+    setInitSuccess(null);
+    try {
+      const res = await fetch("/api/init-db");
+      const data = await res.json();
+      if (data.success) {
+        setInitSuccess("Database tables created successfully!");
+        setDbError(null);
+        fetchOwners(query);
+      } else {
+        setDbError(data.error || "Failed to initialize database.");
+      }
+    } catch {
+      setDbError("Failed to trigger database initialization.");
+    } finally {
+      setInitLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -37,11 +69,16 @@ export default function CustomersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
+      const data = await res.json();
       if (res.ok) {
         setShowForm(false);
         setForm({ name: "", phone: "", email: "", address: "" });
         fetchOwners(query);
+      } else {
+        alert(data.error || "Failed to create customer.");
       }
+    } catch {
+      alert("Error saving customer. Please check database connection.");
     } finally {
       setSaving(false);
     }
@@ -63,6 +100,42 @@ export default function CustomersPage() {
           Add Customer
         </button>
       </div>
+
+      {/* Database Connection Alert */}
+      {dbError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-800">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 text-sm">
+              <h3 className="font-semibold text-amber-900">Database Connection Notice</h3>
+              <p className="mt-1 text-amber-700 text-xs sm:text-sm">{dbError}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleInitDb}
+                  disabled={initLoading}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1a7f7f] text-white rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50 transition-colors"
+                >
+                  {initLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                  Auto-Initialize Database Tables
+                </button>
+                <button
+                  onClick={() => fetchOwners(query)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-amber-300 text-amber-900 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors"
+                >
+                  Retry Connection
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {initSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-emerald-800 flex items-center gap-2 text-sm">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+          <span>{initSuccess}</span>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative">
@@ -91,7 +164,9 @@ export default function CustomersPage() {
           <div className="text-center py-14 bg-white rounded-xl border border-dashed border-gray-300">
             <User size={36} className="mx-auto text-gray-300 mb-3" />
             <p className="text-gray-500 text-sm font-medium">No customers found</p>
-            <p className="text-gray-400 text-xs mt-1">Try a different search or add a new customer</p>
+            <p className="text-gray-400 text-xs mt-1">
+              {dbError ? "Set up your database to start adding customers." : "Try a different search or click 'Add Customer'"}
+            </p>
           </div>
         ) : (
           owners.map((owner) => (
@@ -102,7 +177,7 @@ export default function CustomersPage() {
             >
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1a2f5e] to-[#1a7f7f] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                  {owner.name.charAt(0).toUpperCase()}
+                  {owner.name?.charAt(0).toUpperCase() || "C"}
                 </div>
                 <div>
                   <p className="font-semibold text-gray-800 text-sm group-hover:text-[#1a7f7f] transition-colors">{owner.name}</p>

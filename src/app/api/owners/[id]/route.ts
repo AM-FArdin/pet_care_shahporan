@@ -1,9 +1,13 @@
-import { db } from "@/lib/db";
+import { db, isDbConfigured } from "@/lib/db";
 import { owners, pets, vaccinations, medicalRecords } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!isDbConfigured) {
+    return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+  }
+
   const { id } = await params;
   try {
     const [owner] = await db.select().from(owners).where(eq(owners.id, parseInt(id)));
@@ -27,6 +31,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!isDbConfigured) {
+    return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+  }
+
   const { id } = await params;
   try {
     const body = await req.json();
@@ -39,6 +47,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!isDbConfigured) {
+    return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+  }
+
   const { id } = await params;
   try {
     await db.delete(owners).where(eq(owners.id, parseInt(id)));

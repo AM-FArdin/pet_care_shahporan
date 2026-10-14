@@ -89,11 +89,17 @@ export default function CustomerProfilePage({ params }: { params: Promise<{ id: 
     try {
       const res = await fetch(`/api/owners/${id}`);
       const data = await res.json();
-      setOwner(data);
-      if (data.pets?.length > 0) {
-        setExpandedPets(new Set([data.pets[0].id]));
-        setActivePetTab({ [data.pets[0].id]: "info" });
+      if (res.ok && data && data.id) {
+        setOwner({ ...data, pets: Array.isArray(data.pets) ? data.pets : [] });
+        if (Array.isArray(data.pets) && data.pets.length > 0) {
+          setExpandedPets(new Set([data.pets[0].id]));
+          setActivePetTab({ [data.pets[0].id]: "info" });
+        }
+      } else {
+        setOwner(null);
       }
+    } catch {
+      setOwner(null);
     } finally {
       setLoading(false);
     }
