@@ -79,6 +79,43 @@ export const inventory = mysqlTable("inventory", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ─── Sales (Invoices / Billing) ──────────────────────────────────────────────
+export const sales = mysqlTable("sales", {
+  id: int("id").primaryKey().autoincrement(),
+  invoiceNumber: varchar("invoice_number", { length: 50 }).notNull().unique(),
+  ownerId: int("owner_id").references(() => owners.id, { onDelete: "set null" }),
+  customerName: varchar("customer_name", { length: 255 }).notNull(),
+  customerPhone: varchar("customer_phone", { length: 20 }),
+  petId: int("pet_id").references(() => pets.id, { onDelete: "set null" }),
+  petName: varchar("pet_name", { length: 255 }),
+  subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
+  discountType: varchar("discount_type", { length: 20 }).default("none").notNull(), // 'percentage', 'fixed', 'none'
+  discountValue: decimal("discount_value", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  paidAmount: decimal("paid_amount", { precision: 10, scale: 2 }).default("0.00"),
+  changeAmount: decimal("change_amount", { precision: 10, scale: 2 }).default("0.00"),
+  paymentMethod: varchar("payment_method", { length: 50 }).default("Cash").notNull(), // Cash, bKash, Nagad, Card, Other
+  paymentStatus: varchar("payment_status", { length: 50 }).default("Paid").notNull(), // Paid, Due, Partial
+  doctorOrStaff: varchar("doctor_or_staff", { length: 255 }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ─── Sale Items (Line items) ──────────────────────────────────────────────────
+export const saleItems = mysqlTable("sale_items", {
+  id: int("id").primaryKey().autoincrement(),
+  saleId: int("sale_id").references(() => sales.id, { onDelete: "cascade" }).notNull(),
+  itemType: varchar("item_type", { length: 50 }).notNull(), // 'inventory' or 'service'
+  inventoryId: int("inventory_id").references(() => inventory.id, { onDelete: "set null" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
+  quantity: int("quantity").notNull().default(1),
+  totalPrice: decimal("total_price", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ─── Type exports ─────────────────────────────────────────────────────────────
 export type Owner = typeof owners.$inferSelect;
 export type NewOwner = typeof owners.$inferInsert;
@@ -90,3 +127,7 @@ export type MedicalRecord = typeof medicalRecords.$inferSelect;
 export type NewMedicalRecord = typeof medicalRecords.$inferInsert;
 export type InventoryItem = typeof inventory.$inferSelect;
 export type NewInventoryItem = typeof inventory.$inferInsert;
+export type Sale = typeof sales.$inferSelect;
+export type NewSale = typeof sales.$inferInsert;
+export type SaleItem = typeof saleItems.$inferSelect;
+export type NewSaleItem = typeof saleItems.$inferInsert;

@@ -77,6 +77,45 @@ const CREATE_TABLES_SQL = [
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
+  `CREATE TABLE IF NOT EXISTS sales (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    invoice_number VARCHAR(50) NOT NULL UNIQUE,
+    owner_id INT NULL,
+    customer_name VARCHAR(255) NOT NULL,
+    customer_phone VARCHAR(20),
+    pet_id INT NULL,
+    pet_name VARCHAR(255),
+    subtotal DECIMAL(10, 2) NOT NULL,
+    discount_type VARCHAR(20) DEFAULT 'none' NOT NULL,
+    discount_value DECIMAL(10, 2) DEFAULT 0.00 NOT NULL,
+    discount_amount DECIMAL(10, 2) DEFAULT 0.00 NOT NULL,
+    total_amount DECIMAL(10, 2) NOT NULL,
+    paid_amount DECIMAL(10, 2) DEFAULT 0.00,
+    change_amount DECIMAL(10, 2) DEFAULT 0.00,
+    payment_method VARCHAR(50) DEFAULT 'Cash' NOT NULL,
+    payment_status VARCHAR(50) DEFAULT 'Paid' NOT NULL,
+    doctor_or_staff VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT fk_sales_owner FOREIGN KEY (owner_id) REFERENCES owners(id) ON DELETE SET NULL,
+    CONSTRAINT fk_sales_pet FOREIGN KEY (pet_id) REFERENCES pets(id) ON DELETE SET NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
+  `CREATE TABLE IF NOT EXISTS sale_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    sale_id INT NOT NULL,
+    item_type VARCHAR(50) NOT NULL,
+    inventory_id INT NULL,
+    name VARCHAR(255) NOT NULL,
+    unit_price DECIMAL(10, 2) NOT NULL,
+    quantity INT NOT NULL DEFAULT 1,
+    total_price DECIMAL(10, 2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT fk_items_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
+    CONSTRAINT fk_items_inventory FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE SET NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
 ];
 
 const SEED_INVENTORY_SQL = [

@@ -2,13 +2,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Users, Package, Menu, X } from "lucide-react";
+import { Home, Users, Package, Receipt, Menu, X } from "lucide-react";
 import { useState } from "react";
 
 const navLinks = [
   { href: "/", label: "Home", icon: Home },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/inventory", label: "Inventory", icon: Package },
+  { href: "/sales", label: "Sales & Billing", icon: Receipt },
 ];
 
 export default function Navbar() {

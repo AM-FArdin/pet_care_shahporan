@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Users, Package, Phone, MapPin, Clock, Stethoscope, Syringe, Pill, HeartPulse, Scissors } from "lucide-react";
+import { Users, Package, Phone, MapPin, Clock, Stethoscope, Syringe, Pill, HeartPulse, Scissors, Receipt } from "lucide-react";
 
 const services = [
   { icon: Stethoscope, title: "General Consultation & Health Checkup", color: "text-teal-600" },
@@ -54,6 +54,13 @@ export default function HomePage() {
               <Package size={16} />
               Inventory
             </Link>
+            <Link
+              href="/sales"
+              className="flex items-center gap-2 bg-emerald-500 text-white px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-emerald-600 transition-colors shadow"
+            >
+              <Receipt size={16} />
+              Sales &amp; Billing
+            </Link>
           </div>
         </div>
         <div className="flex-shrink-0">
@@ -68,10 +75,11 @@ export default function HomePage() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Manage Customers", desc: "Search by name or phone", href: "/customers", icon: Users, color: "bg-blue-50 text-blue-700" },
           { label: "Inventory Check", desc: "Track medicines & vaccines", href: "/inventory", icon: Package, color: "bg-teal-50 text-teal-700" },
+          { label: "Billing & Revenue", desc: "New bill & revenue reports", href: "/sales", icon: Receipt, color: "bg-emerald-50 text-emerald-700" },
           { label: "Emergency Line", desc: "01521765716", href: "tel:01521765716", icon: Phone, color: "bg-amber-50 text-amber-700" },
         ].map((card) => (
           <Link
