@@ -1,8 +1,10 @@
-import { db, isDbConfigured, pool } from "@/lib/db";
+import { db, isDbConfigured } from "@/lib/db";
 import { ensureTablesExist } from "@/lib/db/init";
 import { sales, saleItems, inventory } from "@/lib/db/schema";
 import { desc, eq, like, or, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   if (!isDbConfigured || !db) {
@@ -60,12 +62,8 @@ export async function GET(req: NextRequest) {
       totalRevenue += amount;
       totalDiscounts += discount;
 
-      if (saleTime >= startOfToday) {
-        todayRevenue += amount;
-      }
-      if (saleTime >= startOfMonth) {
-        monthRevenue += amount;
-      }
+      if (saleTime >= startOfToday) todayRevenue += amount;
+      if (saleTime >= startOfMonth) monthRevenue += amount;
     }
 
     return NextResponse.json({
@@ -86,7 +84,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isDbConfigured || !db || !pool) {
+  if (!isDbConfigured || !db) {
     return NextResponse.json(
       { error: "Database not configured.", notConfigured: true },
       { status: 503 }
@@ -101,7 +99,7 @@ export async function POST(req: NextRequest) {
       ownerId,
       petId,
       petName,
-      items, // array of { itemType, inventoryId, name, unitPrice, quantity, totalPrice }
+      items,
       discountType = "none",
       discountValue = 0,
       paidAmount = 0,
@@ -121,8 +119,7 @@ export async function POST(req: NextRequest) {
     // Calculate subtotal from items
     let subtotal = 0;
     for (const item of items) {
-      const itemTotal = Number(item.unitPrice) * Number(item.quantity);
-      subtotal += itemTotal;
+      subtotal += Number(item.unitPrice) * Number(item.quantity);
     }
 
     // Calculate discount
@@ -133,14 +130,13 @@ export async function POST(req: NextRequest) {
     } else if (discountType === "fixed") {
       discountAmount = numDiscountValue;
     }
-    // Ensure discount doesn't exceed subtotal
     discountAmount = Math.min(discountAmount, subtotal);
     const totalAmount = Math.max(0, subtotal - discountAmount);
 
     const numPaid = Number(paidAmount) || totalAmount;
     const changeAmount = Math.max(0, numPaid - totalAmount);
 
-    // Generate unique invoice number: INV-YYYYMMDD-XXXX
+    // Generate unique invoice number
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const invoiceNumber = `INV-${dateStr}-${randomSuffix}`;
@@ -151,28 +147,31 @@ export async function POST(req: NextRequest) {
       console.warn("ensureTablesExist warning:", e);
     }
 
-    // Insert sale
-    const [res] = await db.insert(sales).values({
-      invoiceNumber,
-      ownerId: ownerId ? parseInt(ownerId) : null,
-      customerName,
-      customerPhone: customerPhone || null,
-      petId: petId ? parseInt(petId) : null,
-      petName: petName || null,
-      subtotal: subtotal.toFixed(2),
-      discountType,
-      discountValue: numDiscountValue.toFixed(2),
-      discountAmount: discountAmount.toFixed(2),
-      totalAmount: totalAmount.toFixed(2),
-      paidAmount: numPaid.toFixed(2),
-      changeAmount: changeAmount.toFixed(2),
-      paymentMethod,
-      paymentStatus,
-      doctorOrStaff: doctorOrStaff || null,
-      notes: notes || null,
-    });
+    // Insert sale and get back the new row
+    const [newSale] = await db
+      .insert(sales)
+      .values({
+        invoiceNumber,
+        ownerId: ownerId ? parseInt(ownerId) : null,
+        customerName,
+        customerPhone: customerPhone || null,
+        petId: petId ? parseInt(petId) : null,
+        petName: petName || null,
+        subtotal: subtotal.toFixed(2),
+        discountType,
+        discountValue: numDiscountValue.toFixed(2),
+        discountAmount: discountAmount.toFixed(2),
+        totalAmount: totalAmount.toFixed(2),
+        paidAmount: numPaid.toFixed(2),
+        changeAmount: changeAmount.toFixed(2),
+        paymentMethod,
+        paymentStatus,
+        doctorOrStaff: doctorOrStaff || null,
+        notes: notes || null,
+      })
+      .returning();
 
-    const saleId = (res as { insertId: number }).insertId;
+    const saleId = newSale.id;
 
     // Insert line items and auto-update inventory stock
     for (const item of items) {
@@ -187,26 +186,27 @@ export async function POST(req: NextRequest) {
         totalPrice: itemTotal.toFixed(2),
       });
 
-      // Deduct inventory if item is from inventory
+      // Deduct inventory using Drizzle (PostgreSQL GREATEST)
       if (item.inventoryId) {
         try {
-          await pool.query(
-            "UPDATE inventory SET quantity = GREATEST(0, quantity - ?) WHERE id = ?",
-            [parseInt(item.quantity) || 1, parseInt(item.inventoryId)]
-          );
+          const itemQty = parseInt(item.quantity) || 1;
+          const invId = parseInt(item.inventoryId);
+          await db
+            .update(inventory)
+            .set({ quantity: sql`GREATEST(0, ${inventory.quantity} - ${itemQty})` })
+            .where(eq(inventory.id, invId));
         } catch (invErr) {
           console.warn("Failed to auto-deduct inventory:", invErr);
         }
       }
     }
 
-    const [createdSale] = await db.select().from(sales).where(eq(sales.id, saleId));
-    const createdItems = await db.select().from(saleItems).where(eq(saleItems.saleId, saleId));
+    const createdItems = await db
+      .select()
+      .from(saleItems)
+      .where(eq(saleItems.saleId, saleId));
 
-    return NextResponse.json(
-      { sale: createdSale, items: createdItems },
-      { status: 201 }
-    );
+    return NextResponse.json({ sale: newSale, items: createdItems }, { status: 201 });
   } catch (error: unknown) {
     console.error("Error in POST /api/sales:", error);
     const message = error instanceof Error ? error.message : "Failed to record sale";

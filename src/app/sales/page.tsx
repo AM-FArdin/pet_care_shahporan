@@ -18,9 +18,37 @@ import {
   DollarSign,
   User,
   CreditCard,
-  Phone,
+  Download,
+  Wallet,
+  ArrowDownRight,
+  Filter,
+  Pencil,
 } from "lucide-react";
 import type { Owner, InventoryItem } from "@/lib/db/schema";
+import * as XLSX from "xlsx";
+
+export interface ExpenseRecord {
+  id: number;
+  date: string;
+  category: string;
+  description: string | null;
+  amount: string;
+  paidTo: string | null;
+  notes: string | null;
+  isDeleted: boolean;
+  createdAt: string;
+}
+
+const EXPENSE_CATEGORIES = [
+  "Rent",
+  "Utilities",
+  "Salaries",
+  "Supplies",
+  "Medicine Purchase",
+  "Equipment",
+  "Maintenance",
+  "Other",
+];
 
 interface SaleItemInput {
   itemType: "product" | "service";
@@ -33,6 +61,7 @@ interface SaleItemInput {
 interface SaleRecord {
   id: number;
   invoiceNumber: string;
+  ownerId?: number | null;
   customerName: string;
   customerPhone: string | null;
   petName: string | null;
@@ -53,6 +82,7 @@ interface SaleRecord {
 interface SaleDetails extends SaleRecord {
   items?: Array<{
     id: number;
+    inventoryId?: number | null;
     name: string;
     unitPrice: string;
     quantity: number;
@@ -86,10 +116,32 @@ export default function SalesPage() {
   const [query, setQuery] = useState("");
   const [dbError, setDbError] = useState<string | null>(null);
 
+  // Tabs & Date Filtering
+  const [activeTab, setActiveTab] = useState<"sales" | "expenses">("sales");
+  const [dateFilter, setDateFilter] = useState<"all" | "today" | "week" | "month" | "custom">("all");
+  const [customFrom, setCustomFrom] = useState<string>("");
+  const [customTo, setCustomTo] = useState<string>("");
+
+  // Expenses State
+  const [expensesList, setExpensesList] = useState<ExpenseRecord[]>([]);
+  const [expensesLoading, setExpensesLoading] = useState(false);
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [savingExpense, setSavingExpense] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
+  const [expenseForm, setExpenseForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    category: "Supplies",
+    description: "",
+    amount: "",
+    paidTo: "",
+    notes: "",
+  });
+
   // Modal states
   const [showNewSaleModal, setShowNewSaleModal] = useState(false);
   const [viewSale, setViewSale] = useState<SaleDetails | null>(null);
   const [savingSale, setSavingSale] = useState(false);
+  const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
 
   // Available customers and inventory for the new sale form
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -144,10 +196,172 @@ export default function SalesPage() {
     }
   };
 
+  const fetchExpenses = useCallback(async () => {
+    setExpensesLoading(true);
+    try {
+      const res = await fetch("/api/expenses");
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setExpensesList(data);
+      } else {
+        setExpensesList([]);
+      }
+    } catch {
+      setExpensesList([]);
+    } finally {
+      setExpensesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const timer = setTimeout(() => fetchSales(), 300);
     return () => clearTimeout(timer);
   }, [fetchSales]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchExpenses(), 0);
+    return () => clearTimeout(timer);
+  }, [fetchExpenses]);
+
+  const isInDateRange = (dateStr: string) => {
+    if (!dateStr || dateFilter === "all") return true;
+    const itemDate = new Date(dateStr);
+    const now = new Date();
+
+    if (dateFilter === "today") {
+      return (
+        itemDate.getFullYear() === now.getFullYear() &&
+        itemDate.getMonth() === now.getMonth() &&
+        itemDate.getDate() === now.getDate()
+      );
+    }
+    if (dateFilter === "week") {
+      const startOfWeek = new Date(now);
+      const day = startOfWeek.getDay();
+      const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
+      startOfWeek.setDate(diff);
+      startOfWeek.setHours(0, 0, 0, 0);
+      return itemDate >= startOfWeek;
+    }
+    if (dateFilter === "month") {
+      return (
+        itemDate.getFullYear() === now.getFullYear() &&
+        itemDate.getMonth() === now.getMonth()
+      );
+    }
+    if (dateFilter === "custom") {
+      const dayStr = dateStr.slice(0, 10);
+      if (customFrom && dayStr < customFrom) return false;
+      if (customTo && dayStr > customTo) return false;
+      return true;
+    }
+    return true;
+  };
+
+  const filteredSales = salesList.filter((s) => isInDateRange(s.createdAt));
+  const filteredExpenses = expensesList.filter((e) => isInDateRange(e.date));
+
+  const periodGrossSales = filteredSales.reduce((acc, s) => acc + (Number(s.subtotal) || Number(s.totalAmount) || 0), 0);
+  const periodDiscounts = filteredSales.reduce((acc, s) => acc + (Number(s.discountAmount) || 0), 0);
+  const periodExpenses = filteredExpenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
+  const periodNetRevenue = (periodGrossSales - periodDiscounts) - periodExpenses;
+
+  const handleExportData = () => {
+    if (activeTab === "sales") {
+      const data = filteredSales.map((s) => ({
+        "Invoice #": s.invoiceNumber,
+        Date: new Date(s.createdAt).toLocaleDateString("en-GB"),
+        Customer: s.customerName,
+        Phone: s.customerPhone ?? "",
+        Pet: s.petName ?? "",
+        "Gross Subtotal (৳)": s.subtotal,
+        "Discount (৳)": s.discountAmount,
+        "Net Amount (৳)": s.totalAmount,
+        "Paid (৳)": s.paidAmount,
+        Status: s.paymentStatus,
+        Method: s.paymentMethod,
+        "Staff/Doctor": s.doctorOrStaff ?? "",
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sales Invoices");
+      XLSX.writeFile(wb, `sales_${dateFilter}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } else {
+      const data = filteredExpenses.map((e) => ({
+        Date: e.date,
+        Category: e.category,
+        Description: e.description ?? "",
+        "Amount (৳)": e.amount,
+        "Paid To": e.paidTo ?? "",
+        Notes: e.notes ?? "",
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Expenses");
+      XLSX.writeFile(wb, `expenses_${dateFilter}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+  };
+
+  const handleSaveExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingExpense(true);
+    try {
+      const res = await fetch(editingExpenseId ? `/api/expenses/${editingExpenseId}` : "/api/expenses", {
+        method: editingExpenseId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(expenseForm),
+      });
+      if (res.ok) {
+        setShowExpenseModal(false);
+        setEditingExpenseId(null);
+        setExpenseForm({
+          date: new Date().toISOString().slice(0, 10),
+          category: "Supplies",
+          description: "",
+          amount: "",
+          paidTo: "",
+          notes: "",
+        });
+        fetchExpenses();
+      } else {
+        const d = await res.json();
+        alert(d.error || "Failed to record expense.");
+      }
+    } catch {
+      alert("Error saving expense.");
+    } finally {
+      setSavingExpense(false);
+    }
+  };
+
+  const handleDeleteExpense = async (id: number) => {
+    if (!confirm("Soft-delete this expense entry?")) return;
+    try {
+      await fetch(`/api/expenses/${id}`, { method: "DELETE" });
+      fetchExpenses();
+    } catch {
+      alert("Failed to delete expense.");
+    }
+  };
+
+  const openNewExpense = () => {
+    setEditingExpenseId(null);
+    setExpenseForm({ date: new Date().toISOString().slice(0, 10), category: "Supplies", description: "", amount: "", paidTo: "", notes: "" });
+    setShowExpenseModal(true);
+  };
+
+  const openEditExpense = (expense: ExpenseRecord) => {
+    setEditingExpenseId(expense.id);
+    setExpenseForm({
+      date: expense.date,
+      category: expense.category,
+      description: expense.description || "",
+      amount: expense.amount,
+      paidTo: expense.paidTo || "",
+      notes: expense.notes || "",
+    });
+    setShowExpenseModal(true);
+  };
 
   const openNewSale = () => {
     loadAuxiliaryData();
@@ -164,7 +378,39 @@ export default function SalesPage() {
     setPaidAmount("");
     setDoctorOrStaff(DOCTORS[0]);
     setNotes("");
+    setEditingSaleId(null);
     setShowNewSaleModal(true);
+  };
+
+  const openEditSale = async (saleId: number) => {
+    try {
+      loadAuxiliaryData();
+      const res = await fetch(`/api/sales/${saleId}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const sale = data.sale as SaleRecord;
+      setEditingSaleId(saleId);
+      setSelectedOwnerId(sale.ownerId ? String(sale.ownerId) : "");
+      setCustomerName(sale.customerName);
+      setCustomerPhone(sale.customerPhone || "");
+      setPetName(sale.petName || "");
+      setSaleItemsList((data.items || []).map((item: NonNullable<SaleDetails["items"]>[number]) => ({
+        itemType: item.itemType === "product" ? "product" : "service",
+        inventoryId: item.inventoryId || undefined,
+        name: item.name,
+        unitPrice: Number(item.unitPrice),
+        quantity: item.quantity,
+      })));
+      setDiscountType(sale.discountType as "none" | "percentage" | "fixed");
+      setDiscountValue(Number(sale.discountValue) || 0);
+      setPaymentMethod(sale.paymentMethod);
+      setPaidAmount(sale.paidAmount);
+      setDoctorOrStaff(sale.doctorOrStaff || DOCTORS[0]);
+      setNotes(sale.notes || "");
+      setShowNewSaleModal(true);
+    } catch {
+      alert("Failed to load invoice for editing.");
+    }
   };
 
   const handleSelectCustomer = (ownerIdStr: string) => {
@@ -268,8 +514,8 @@ export default function SalesPage() {
         notes,
       };
 
-      const res = await fetch("/api/sales", {
-        method: "POST",
+      const res = await fetch(editingSaleId ? `/api/sales/${editingSaleId}` : "/api/sales", {
+        method: editingSaleId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -277,6 +523,7 @@ export default function SalesPage() {
       const data = await res.json();
       if (res.ok) {
         setShowNewSaleModal(false);
+        setEditingSaleId(null);
         fetchSales();
         // Immediately open print receipt view for this newly created sale!
         if (data.sale) {
@@ -340,16 +587,32 @@ export default function SalesPage() {
         <div>
           <h1 className="text-2xl font-bold text-[#1a2f5e]">Sales & Revenue</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Clinic billing, invoice generation, discount calculation, and revenue reports
+            Clinic billing, invoicing, operational expenses, and real-time revenue reports
           </p>
         </div>
-        <button
-          onClick={openNewSale}
-          className="flex items-center justify-center gap-2 bg-[#1a7f7f] text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-teal-700 transition-colors shadow-sm"
-        >
-          <Plus size={16} />
-          New Sale / Bill
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={handleExportData}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2.5 rounded-lg text-sm font-semibold transition-colors shadow-sm"
+          >
+            <Download size={16} />
+            Export (.xlsx)
+          </button>
+          <button
+            onClick={openNewExpense}
+            className="flex items-center gap-1.5 bg-[#1a2f5e] hover:bg-blue-900 text-white px-3.5 py-2.5 rounded-lg text-sm font-semibold transition-colors shadow-sm"
+          >
+            <Wallet size={16} />
+            Record Expense
+          </button>
+          <button
+            onClick={openNewSale}
+            className="flex items-center justify-center gap-1.5 bg-[#1a7f7f] text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-teal-700 transition-colors shadow-sm"
+          >
+            <Plus size={16} />
+            New Sale / Bill
+          </button>
+        </div>
       </div>
 
       {/* Database Error Banner */}
@@ -363,170 +626,461 @@ export default function SalesPage() {
         </div>
       )}
 
-      {/* Revenue Performance Cards */}
+      {/* Date Filter Bar */}
+      <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 text-sm">
+        <div className="flex items-center gap-2 text-gray-700 font-semibold text-xs uppercase tracking-wider">
+          <Filter size={15} className="text-[#1a7f7f]" />
+          <span>Date Filter:</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[
+            { id: "all", label: "All Time" },
+            { id: "today", label: "Today" },
+            { id: "week", label: "This Week" },
+            { id: "month", label: "This Month" },
+            { id: "custom", label: "Custom Range" },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setDateFilter(item.id as typeof dateFilter)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                dateFilter === item.id
+                  ? "bg-[#1a2f5e] text-white shadow-xs"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        {dateFilter === "custom" && (
+          <div className="flex items-center gap-2 text-xs">
+            <input
+              type="date"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-teal-500"
+            />
+            <span className="text-gray-400">to</span>
+            <input
+              type="date"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-teal-500"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Real-Time Revenue Performance Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+        {/* Net Revenue Hero Card */}
         <div className="bg-gradient-to-br from-[#1a2f5e] to-[#243d78] text-white p-4 sm:p-5 rounded-2xl shadow-sm col-span-2 sm:col-span-1">
           <div className="flex items-center justify-between text-teal-200 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Total Revenue</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Net Revenue</span>
             <DollarSign size={18} />
           </div>
-          <p className="text-2xl sm:text-3xl font-bold tracking-tight">৳{summary.totalRevenue}</p>
-          <p className="text-xs text-teal-200 mt-1">All time earnings</p>
+          <p className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+            ৳{periodNetRevenue.toFixed(2)}
+          </p>
+          <p className="text-[11px] text-teal-200 mt-1 font-medium">
+            (Sales - Discounts) - Expenses
+          </p>
         </div>
 
+        {/* Gross Sales */}
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-sm">
           <div className="flex items-center justify-between text-emerald-600 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Today</span>
-            <Calendar size={18} />
-          </div>
-          <p className="text-xl sm:text-2xl font-bold text-gray-800">৳{summary.todayRevenue}</p>
-          <p className="text-xs text-gray-400 mt-1">Today&apos;s collections</p>
-        </div>
-
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between text-blue-600 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">This Month</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Gross Sales</span>
             <TrendingUp size={18} />
           </div>
-          <p className="text-xl sm:text-2xl font-bold text-gray-800">৳{summary.monthRevenue}</p>
-          <p className="text-xs text-gray-400 mt-1">Current month total</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-800">৳{periodGrossSales.toFixed(2)}</p>
+          <p className="text-xs text-gray-400 mt-1">{filteredSales.length} Invoices</p>
         </div>
 
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between text-teal-600 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Invoices</span>
-            <Receipt size={18} />
-          </div>
-          <p className="text-xl sm:text-2xl font-bold text-gray-800">{summary.totalSalesCount}</p>
-          <p className="text-xs text-gray-400 mt-1">Total orders billed</p>
-        </div>
-
+        {/* Total Discounts */}
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-sm">
           <div className="flex items-center justify-between text-amber-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Discounts</span>
             <Percent size={18} />
           </div>
-          <p className="text-xl sm:text-2xl font-bold text-amber-600">৳{summary.totalDiscounts}</p>
-          <p className="text-xs text-gray-400 mt-1">Total concession given</p>
+          <p className="text-xl sm:text-2xl font-bold text-amber-600">৳{periodDiscounts.toFixed(2)}</p>
+          <p className="text-xs text-gray-400 mt-1">Concessions given</p>
+        </div>
+
+        {/* Total Expenses */}
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-sm">
+          <div className="flex items-center justify-between text-rose-600 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Expenses</span>
+            <ArrowDownRight size={18} />
+          </div>
+          <p className="text-xl sm:text-2xl font-bold text-rose-600">৳{periodExpenses.toFixed(2)}</p>
+          <p className="text-xs text-gray-400 mt-1">{filteredExpenses.length} Records</p>
+        </div>
+
+        {/* Today's Revenue */}
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-sm">
+          <div className="flex items-center justify-between text-teal-600 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Today&apos;s Revenue</span>
+            <Calendar size={18} />
+          </div>
+          <p className="text-xl sm:text-2xl font-bold text-gray-800">৳{summary.todayRevenue}</p>
+          <p className="text-xs text-gray-400 mt-1">Today&apos;s collections</p>
         </div>
       </div>
 
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by invoice #, customer name, phone, or pet name..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white shadow-sm"
-          />
-          {query && (
-            <button onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <X size={15} />
-            </button>
-          )}
-        </div>
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 gap-4">
+        <button
+          onClick={() => setActiveTab("sales")}
+          className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${
+            activeTab === "sales"
+              ? "border-[#1a7f7f] text-[#1a7f7f]"
+              : "border-transparent text-gray-500 hover:text-gray-800"
+          }`}
+        >
+          <Receipt size={17} />
+          <span>Invoices &amp; Billing</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full ${
+            activeTab === "sales" ? "bg-teal-100 text-teal-800" : "bg-gray-100 text-gray-600"
+          }`}>
+            {filteredSales.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("expenses")}
+          className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${
+            activeTab === "expenses"
+              ? "border-[#1a7f7f] text-[#1a7f7f]"
+              : "border-transparent text-gray-500 hover:text-gray-800"
+          }`}
+        >
+          <Wallet size={17} />
+          <span>Operational Expenses</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full ${
+            activeTab === "expenses" ? "bg-teal-100 text-teal-800" : "bg-gray-100 text-gray-600"
+          }`}>
+            {filteredExpenses.length}
+          </span>
+        </button>
       </div>
 
-      {/* Sales History Table */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="flex justify-center py-16">
-            <Loader2 size={30} className="animate-spin text-teal-600" />
+      {activeTab === "sales" ? (
+        <>
+          {/* Search and Filters */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by invoice #, customer name, phone, or pet name..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white shadow-sm"
+              />
+              {query && (
+                <button onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <X size={15} />
+                </button>
+              )}
+            </div>
           </div>
-        ) : salesList.length === 0 ? (
-          <div className="text-center py-16">
-            <ShoppingBag size={40} className="mx-auto text-gray-300 mb-3" />
-            <p className="text-gray-600 font-medium text-sm">No sales or invoices recorded yet</p>
-            <p className="text-gray-400 text-xs mt-1">
-              Click &quot;New Sale / Bill&quot; to create your first invoice
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Invoice</th>
-                  <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Customer & Pet</th>
-                  <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide hidden md:table-cell">Date</th>
-                  <th className="text-right py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Discount</th>
-                  <th className="text-right py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Total</th>
-                  <th className="text-center py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide hidden sm:table-cell">Status</th>
-                  <th className="text-center py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {salesList.map((sale) => (
-                  <tr key={sale.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="py-3.5 px-4">
-                      <p className="font-semibold text-gray-800 text-xs font-mono">{sale.invoiceNumber}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{sale.paymentMethod}</p>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <p className="font-medium text-gray-800">{sale.customerName}</p>
-                      <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
-                        {sale.customerPhone && <span>{sale.customerPhone}</span>}
-                        {sale.petName && (
-                          <span className="bg-teal-50 text-teal-700 px-1.5 py-0.2 rounded text-[11px] font-medium">
-                            🐾 {sale.petName}
+
+          {/* Sales History Table */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            {loading ? (
+              <div className="flex justify-center py-16">
+                <Loader2 size={30} className="animate-spin text-teal-600" />
+              </div>
+            ) : filteredSales.length === 0 ? (
+              <div className="text-center py-16">
+                <ShoppingBag size={40} className="mx-auto text-gray-300 mb-3" />
+                <p className="text-gray-600 font-medium text-sm">No sales or invoices recorded for this period</p>
+                <p className="text-gray-400 text-xs mt-1">
+                  Click &quot;New Sale / Bill&quot; to create your first invoice
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Invoice</th>
+                      <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Customer &amp; Pet</th>
+                      <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide hidden md:table-cell">Date</th>
+                      <th className="text-right py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Discount</th>
+                      <th className="text-right py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Total</th>
+                      <th className="text-center py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide hidden sm:table-cell">Status</th>
+                      <th className="text-center py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredSales.map((sale) => (
+                      <tr key={sale.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <p className="font-semibold text-gray-800 text-xs font-mono">{sale.invoiceNumber}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{sale.paymentMethod}</p>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <p className="font-medium text-gray-800">{sale.customerName}</p>
+                          <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+                            {sale.customerPhone && <span>{sale.customerPhone}</span>}
+                            {sale.petName && (
+                              <span className="bg-teal-50 text-teal-700 px-1.5 py-0.2 rounded text-[11px] font-medium">
+                                🐾 {sale.petName}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 text-xs text-gray-500 hidden md:table-cell">
+                          {formatDate(sale.createdAt)}
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          {Number(sale.discountAmount) > 0 ? (
+                            <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                              -৳{sale.discountAmount}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-bold text-gray-900">
+                          ৳{sale.totalAmount}
+                        </td>
+                        <td className="py-3.5 px-4 text-center hidden sm:table-cell">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                              sale.paymentStatus === "Paid"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {sale.paymentStatus}
                           </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4 text-xs text-gray-500 hidden md:table-cell">
-                      {formatDate(sale.createdAt)}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      {Number(sale.discountAmount) > 0 ? (
-                        <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-                          -৳{sale.discountAmount}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => handleViewReceipt(sale.id)}
+                              title="View / Print Invoice"
+                              className="p-1.5 text-gray-500 hover:text-[#1a7f7f] hover:bg-teal-50 rounded-lg transition-colors"
+                            >
+                              <Eye size={16} />
+                            </button>
+                            <button
+                              onClick={() => openEditSale(sale.id)}
+                              title="Edit Invoice"
+                              className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            >
+                              <Pencil size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSale(sale.id, sale.invoiceNumber)}
+                              title="Delete / Cancel Sale"
+                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        /* Expenses Table */
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          {expensesLoading ? (
+            <div className="flex justify-center py-16">
+              <Loader2 size={30} className="animate-spin text-teal-600" />
+            </div>
+          ) : filteredExpenses.length === 0 ? (
+            <div className="text-center py-16">
+              <Wallet size={40} className="mx-auto text-gray-300 mb-3" />
+              <p className="text-gray-600 font-medium text-sm">No operational expenses recorded for this period</p>
+              <p className="text-gray-400 text-xs mt-1">
+                Click &quot;Record Expense&quot; to log clinic rent, utilities, salaries, or supplies
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Date</th>
+                    <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Category</th>
+                    <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Description</th>
+                    <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide hidden sm:table-cell">Paid To</th>
+                    <th className="text-right py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Amount</th>
+                    <th className="text-left py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide hidden md:table-cell">Notes</th>
+                    <th className="text-center py-3.5 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredExpenses.map((expense) => (
+                    <tr key={expense.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-3.5 px-4 font-medium text-gray-800 text-xs whitespace-nowrap">
+                        {expense.date}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-[#1a2f5e] border border-blue-100">
+                          {expense.category}
                         </span>
-                      ) : (
-                        <span className="text-gray-400 text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-bold text-gray-900">
-                      ৳{sale.totalAmount}
-                    </td>
-                    <td className="py-3.5 px-4 text-center hidden sm:table-cell">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                          sale.paymentStatus === "Paid"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {sale.paymentStatus}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-800 font-medium">
+                        {expense.description || "—"}
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-600 text-xs hidden sm:table-cell">
+                        {expense.paidTo || "—"}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-bold text-rose-600 whitespace-nowrap">
+                        -৳{Number(expense.amount).toFixed(2)}
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-500 text-xs hidden md:table-cell max-w-xs truncate">
+                        {expense.notes || "—"}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
                         <button
-                          onClick={() => handleViewReceipt(sale.id)}
-                          title="View / Print Invoice"
-                          className="p-1.5 text-gray-500 hover:text-[#1a7f7f] hover:bg-teal-50 rounded-lg transition-colors"
+                          onClick={() => openEditExpense(expense)}
+                          title="Edit Expense"
+                          className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         >
-                          <Eye size={16} />
+                          <Pencil size={16} />
                         </button>
                         <button
-                          onClick={() => handleDeleteSale(sale.id, sale.invoiceNumber)}
-                          title="Delete / Cancel Sale"
+                          onClick={() => handleDeleteExpense(expense.id)}
+                          title="Delete Expense"
                           className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                         >
                           <Trash2 size={16} />
                         </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ───── Modal: Record Expense ───── */}
+      {showExpenseModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md my-6 animate-fade-in overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b bg-gradient-to-r from-[#1a2f5e] to-rose-700 text-white">
+              <div className="flex items-center gap-2.5">
+                <Wallet className="w-5 h-5" />
+                <h2 className="text-lg font-bold">{editingExpenseId ? "Edit Operational Expense" : "Record Operational Expense"}</h2>
+              </div>
+              <button
+                onClick={() => setShowExpenseModal(false)}
+                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveExpense} className="p-5 space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={expenseForm.date}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Category *</label>
+                  <select
+                    value={expenseForm.category}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  >
+                    {EXPENSE_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Amount (৳) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="0.00"
+                  value={expenseForm.amount}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Paid To / Vendor</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Landlord, Electric Board, Medical Supplier"
+                  value={expenseForm.paidTo}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, paidTo: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Description</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Monthly clinic rent, gauze and cotton, staff tea"
+                  value={expenseForm.description}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Notes / Voucher Reference</label>
+                <textarea
+                  rows={2}
+                  placeholder="Optional voucher # or additional details"
+                  value={expenseForm.notes}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, notes: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                />
+              </div>
+
+              <div className="pt-3 border-t flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowExpenseModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingExpense}
+                  className="px-5 py-2 bg-[#1a2f5e] hover:bg-blue-900 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {savingExpense && <Loader2 size={13} className="animate-spin" />}
+                  {editingExpenseId ? "Update Expense" : "Save Expense"}
+                </button>
+              </div>
+            </form>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ───── Modal: New Sale / Billing ───── */}
       {showNewSaleModal && (
@@ -535,7 +1089,7 @@ export default function SalesPage() {
             <div className="flex items-center justify-between p-5 border-b bg-gradient-to-r from-[#1a2f5e] to-[#1a7f7f] text-white">
               <div className="flex items-center gap-2.5">
                 <Receipt className="w-5 h-5" />
-                <h2 className="text-lg font-bold">New Sale & Invoice</h2>
+                <h2 className="text-lg font-bold">{editingSaleId ? "Edit Sale & Invoice" : "New Sale & Invoice"}</h2>
               </div>
               <button
                 onClick={() => setShowNewSaleModal(false)}
@@ -854,7 +1408,7 @@ export default function SalesPage() {
                       className="flex-1 py-2.5 bg-[#1a7f7f] text-white rounded-xl text-sm font-bold hover:bg-teal-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow"
                     >
                       {savingSale ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
-                      Complete &amp; Print
+                      {editingSaleId ? "Save Changes" : "Complete & Print"}
                     </button>
                   </div>
                 </div>

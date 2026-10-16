@@ -3,6 +3,8 @@ import { owners, pets, vaccinations, medicalRecords } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!isDbConfigured || !db) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
@@ -13,10 +15,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const [owner] = await db.select().from(owners).where(eq(owners.id, parseInt(id)));
     if (!owner) return NextResponse.json({ error: "Owner not found" }, { status: 404 });
 
-    const ownerPets = await db.select().from(pets).where(eq(pets.ownerId, parseInt(id))).orderBy(pets.name);
+    const ownerPets = await db
+      .select()
+      .from(pets)
+      .where(eq(pets.ownerId, parseInt(id)))
+      .orderBy(pets.name);
+
+    const activePets = ownerPets.filter((p) => p.isActive);
 
     const petsWithData = await Promise.all(
-      ownerPets.map(async (pet) => {
+      activePets.map(async (pet) => {
         const vax = await db.select().from(vaccinations).where(eq(vaccinations.petId, pet.id)).orderBy(vaccinations.dateAdministered);
         const records = await db.select().from(medicalRecords).where(eq(medicalRecords.petId, pet.id)).orderBy(medicalRecords.visitDate);
         return { ...pet, vaccinations: vax, medicalRecords: records };

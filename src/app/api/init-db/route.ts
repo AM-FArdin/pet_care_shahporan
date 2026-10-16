@@ -2,6 +2,8 @@ import { isDbConfigured } from "@/lib/db";
 import { ensureTablesExist } from "@/lib/db/init";
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   if (!isDbConfigured) {
     return NextResponse.json(

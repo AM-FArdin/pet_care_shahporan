@@ -4,19 +4,23 @@ import { inventory } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   if (!isDbConfigured || !db) {
     return NextResponse.json(
-      {
-        error: "MySQL database not configured. Please set DATABASE_URL in .env.local (e.g. mysql://user:password@localhost:3306/shahporan_vet)",
-        notConfigured: true,
-      },
+      { error: "Database not configured. Please set DATABASE_URL.", notConfigured: true },
       { status: 503 }
     );
   }
 
   try {
-    const fetchItems = () => db.select().from(inventory).orderBy(inventory.category, inventory.name);
+    const fetchItems = () =>
+      db
+        .select()
+        .from(inventory)
+        .where(eq(inventory.isActive, true))
+        .orderBy(inventory.category, inventory.name);
 
     try {
       const items = await fetchItems();
@@ -36,25 +40,55 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   if (!isDbConfigured || !db) {
     return NextResponse.json(
-      {
-        error: "MySQL database not configured.",
-        notConfigured: true,
-      },
+      { error: "Database not configured.", notConfigured: true },
       { status: 503 }
     );
   }
 
   try {
     const body = await req.json();
+    if (!body.name?.trim() || !body.category?.trim()) {
+      return NextResponse.json(
+        { error: "Product name and category are required." },
+        { status: 400 }
+      );
+    }
+
+    const payload = {
+      name: body.name.trim(),
+      category: body.category.trim(),
+      description: body.description?.trim() || null,
+      quantity:
+        body.quantity !== undefined && body.quantity !== null && String(body.quantity).trim() !== ""
+          ? parseInt(body.quantity)
+          : 0,
+      unit: body.unit?.trim() || "units",
+      minimumStock:
+        body.minimumStock !== undefined && body.minimumStock !== null && String(body.minimumStock).trim() !== ""
+          ? parseInt(body.minimumStock)
+          : 5,
+      costPrice:
+        body.costPrice !== undefined && body.costPrice !== null && String(body.costPrice).trim() !== ""
+          ? String(body.costPrice).trim()
+          : null,
+      sellingPrice:
+        body.sellingPrice !== undefined && body.sellingPrice !== null && String(body.sellingPrice).trim() !== ""
+          ? String(body.sellingPrice).trim()
+          : null,
+      supplier: body.supplier?.trim() || null,
+      expiryDate: body.expiryDate?.trim() || null,
+      batchNumber: body.batchNumber?.trim() || null,
+      location: body.location?.trim() || null,
+      isActive: true,
+    };
+
     try {
-      const [res] = await db.insert(inventory).values(body);
-      const [item] = await db.select().from(inventory).where(eq(inventory.id, (res as { insertId: number }).insertId));
-      return NextResponse.json(item || { id: (res as { insertId: number }).insertId, ...body }, { status: 201 });
+      const [item] = await db.insert(inventory).values(payload).returning();
+      return NextResponse.json(item, { status: 201 });
     } catch {
       await ensureTablesExist();
-      const [res] = await db.insert(inventory).values(body);
-      const [item] = await db.select().from(inventory).where(eq(inventory.id, (res as { insertId: number }).insertId));
-      return NextResponse.json(item || { id: (res as { insertId: number }).insertId, ...body }, { status: 201 });
+      const [item] = await db.insert(inventory).values(payload).returning();
+      return NextResponse.json(item, { status: 201 });
     }
   } catch (error: unknown) {
     console.error("Error in POST /api/inventory:", error);

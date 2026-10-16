@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Users, Package, Phone, MapPin, Clock, Stethoscope, Syringe, Pill, HeartPulse, Scissors, Receipt } from "lucide-react";
+import DashboardStats from "@/components/DashboardStats";
+import DueDatesAlertCenter from "@/components/DueDatesAlertCenter";
 
 const services = [
   { icon: Stethoscope, title: "General Consultation & Health Checkup", color: "text-teal-600" },
@@ -74,7 +76,16 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Quick Stats */}
+      {/* Live Dashboard Widgets */}
+      <div>
+        <h2 className="text-xl font-bold text-[#1a2f5e] mb-4">Clinic Live Overview</h2>
+        <DashboardStats />
+      </div>
+
+      {/* Interactive Pet Due Date & Follow-Up Reminders */}
+      <DueDatesAlertCenter />
+
+      {/* Quick Navigation */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Manage Customers", desc: "Search by name or phone", href: "/customers", icon: Users, color: "bg-blue-50 text-blue-700" },

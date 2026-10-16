@@ -142,7 +142,7 @@ export default function CustomersPage() {
         <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
           type="text"
-          placeholder="Search by name or phone number..."
+          placeholder="Search by customer name, phone number, or pet name..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent bg-white shadow-sm"
@@ -169,28 +169,50 @@ export default function CustomersPage() {
             </p>
           </div>
         ) : (
-          owners.map((owner) => (
-            <Link
-              key={owner.id}
-              href={`/customers/${owner.id}`}
-              className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-5 py-4 hover:shadow-md hover:border-teal-300 transition-all group"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1a2f5e] to-[#1a7f7f] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                  {owner.name?.charAt(0).toUpperCase() || "C"}
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-800 text-sm group-hover:text-[#1a7f7f] transition-colors">{owner.name}</p>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <Phone size={11} className="text-gray-400" />
-                    <p className="text-xs text-gray-500">{owner.phone}</p>
+          owners.map((owner) => {
+            const ownerPets = (owner as unknown as { pets?: Array<{ id: number; name: string; species: string }> }).pets || [];
+            return (
+              <Link
+                key={owner.id}
+                href={`/customers/${owner.id}`}
+                className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-5 py-4 hover:shadow-md hover:border-teal-300 transition-all group"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1a2f5e] to-[#1a7f7f] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                    {owner.name?.charAt(0).toUpperCase() || "C"}
                   </div>
-                  {owner.address && <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{owner.address}</p>}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-800 text-sm group-hover:text-[#1a7f7f] transition-colors">{owner.name}</p>
+                      {ownerPets.length > 0 && (
+                        <span className="text-[11px] bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full font-medium border border-teal-100">
+                          {ownerPets.length} pet{ownerPets.length > 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Phone size={11} className="text-gray-400" />
+                      <p className="text-xs text-gray-500">{owner.phone}</p>
+                    </div>
+                    {ownerPets.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {ownerPets.map((pet) => (
+                          <span
+                            key={pet.id}
+                            className="inline-flex items-center text-[11px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded-md border border-amber-200/60"
+                          >
+                            🐾 {pet.name} ({pet.species})
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {owner.address && <p className="text-xs text-gray-400 mt-1 line-clamp-1">{owner.address}</p>}
+                  </div>
                 </div>
-              </div>
-              <ChevronRight size={18} className="text-gray-400 group-hover:text-teal-500 transition-colors" />
-            </Link>
-          ))
+                <ChevronRight size={18} className="text-gray-400 group-hover:text-teal-500 transition-colors" />
+              </Link>
+            );
+          })
         )}
       </div>
 
