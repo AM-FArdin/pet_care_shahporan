@@ -56,6 +56,7 @@ interface SaleItemInput {
   name: string;
   unitPrice: number;
   quantity: number;
+  discountPercentage: number;
 }
 
 interface SaleRecord {
@@ -68,11 +69,14 @@ interface SaleRecord {
   subtotal: string;
   discountType: string;
   discountValue: string;
+  overallDiscountAmount: string;
+  itemDiscountAmount: string;
   discountAmount: string;
   totalAmount: string;
   paidAmount: string;
   changeAmount: string;
   paymentMethod: string;
+  paymentReference: string | null;
   paymentStatus: string;
   doctorOrStaff: string | null;
   notes: string | null;
@@ -86,6 +90,8 @@ interface SaleDetails extends SaleRecord {
     name: string;
     unitPrice: string;
     quantity: number;
+    discountPercentage: string;
+    discountAmount: string;
     totalPrice: string;
     itemType: string;
   }>;
@@ -156,6 +162,7 @@ export default function SalesPage() {
   const [discountType, setDiscountType] = useState<"none" | "percentage" | "fixed">("none");
   const [discountValue, setDiscountValue] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState("Cash");
+  const [paymentReference, setPaymentReference] = useState("");
   const [paidAmount, setPaidAmount] = useState<string>("");
   const [doctorOrStaff, setDoctorOrStaff] = useState(DOCTORS[0]);
   const [notes, setNotes] = useState("");
@@ -336,9 +343,15 @@ export default function SalesPage() {
 
   const handleDeleteExpense = async (id: number) => {
     if (!confirm("Soft-delete this expense entry?")) return;
+    const scrollY = window.scrollY;
     try {
-      await fetch(`/api/expenses/${id}`, { method: "DELETE" });
-      fetchExpenses();
+      const res = await fetch(`/api/expenses/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setExpensesList((current) => current.filter((expense) => expense.id !== id));
+        requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
+      } else {
+        alert("Failed to delete expense.");
+      }
     } catch {
       alert("Failed to delete expense.");
     }
@@ -369,12 +382,11 @@ export default function SalesPage() {
     setCustomerName("");
     setCustomerPhone("");
     setPetName("");
-    setSaleItemsList([
-      { itemType: "service", name: "General Consultation Fee", unitPrice: 300, quantity: 1 },
-    ]);
+    setSaleItemsList([]);
     setDiscountType("none");
     setDiscountValue(0);
     setPaymentMethod("Cash");
+    setPaymentReference("");
     setPaidAmount("");
     setDoctorOrStaff(DOCTORS[0]);
     setNotes("");
@@ -400,10 +412,12 @@ export default function SalesPage() {
         name: item.name,
         unitPrice: Number(item.unitPrice),
         quantity: item.quantity,
+        discountPercentage: Number(item.discountPercentage) || 0,
       })));
       setDiscountType(sale.discountType as "none" | "percentage" | "fixed");
       setDiscountValue(Number(sale.discountValue) || 0);
       setPaymentMethod(sale.paymentMethod);
+      setPaymentReference(sale.paymentReference || "");
       setPaidAmount(sale.paidAmount);
       setDoctorOrStaff(sale.doctorOrStaff || DOCTORS[0]);
       setNotes(sale.notes || "");
@@ -435,6 +449,7 @@ export default function SalesPage() {
         name: inv.name,
         unitPrice: Number(inv.sellingPrice) || 0,
         quantity: 1,
+        discountPercentage: 0,
       },
     ]);
   };
@@ -449,6 +464,7 @@ export default function SalesPage() {
         name: s ? s.name : serviceName,
         unitPrice: s ? s.price : 0,
         quantity: 1,
+        discountPercentage: 0,
       },
     ]);
   };
@@ -471,14 +487,20 @@ export default function SalesPage() {
     0
   );
 
+  const itemDiscountAmount = saleItemsList.reduce(
+    (acc, it) => acc + (Number(it.unitPrice) || 0) * (Number(it.quantity) || 1) * (Number(it.discountPercentage) || 0) / 100,
+    0
+  );
+  const afterItemDiscounts = Math.max(0, subtotal - itemDiscountAmount);
   let discountAmount = 0;
   if (discountType === "percentage") {
-    discountAmount = (subtotal * (Number(discountValue) || 0)) / 100;
+    discountAmount = (afterItemDiscounts * (Number(discountValue) || 0)) / 100;
   } else if (discountType === "fixed") {
     discountAmount = Number(discountValue) || 0;
   }
-  discountAmount = Math.min(discountAmount, subtotal);
-  const totalAmount = Math.max(0, subtotal - discountAmount);
+  discountAmount = Math.min(discountAmount, afterItemDiscounts);
+  const totalDiscountAmount = itemDiscountAmount + discountAmount;
+  const totalAmount = Math.max(0, afterItemDiscounts - discountAmount);
 
   const numPaid = paidAmount === "" ? totalAmount : Number(paidAmount) || 0;
   const changeAmount = Math.max(0, numPaid - totalAmount);
@@ -504,11 +526,14 @@ export default function SalesPage() {
         items: saleItemsList,
         discountType,
         discountValue,
-        discountAmount,
+        discountAmount: totalDiscountAmount,
+        itemDiscountAmount,
+        overallDiscountAmount: discountAmount,
         totalAmount,
         paidAmount: numPaid,
         changeAmount,
         paymentMethod,
+        paymentReference,
         paymentStatus: numPaid >= totalAmount ? "Paid" : "Due",
         doctorOrStaff,
         notes,
@@ -557,10 +582,12 @@ export default function SalesPage() {
     if (!confirm(`Are you sure you want to delete invoice ${invoiceNumber}? Inventory quantities will be restored.`)) {
       return;
     }
+    const scrollY = window.scrollY;
     try {
       const res = await fetch(`/api/sales/${saleId}`, { method: "DELETE" });
       if (res.ok) {
-        fetchSales();
+        setSalesList((current) => current.filter((sale) => sale.id !== saleId));
+        requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
       } else {
         alert("Failed to delete invoice.");
       }
@@ -1257,6 +1284,19 @@ export default function SalesPage() {
                             />
                           </div>
 
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-gray-400">Disc %:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={item.discountPercentage}
+                              onChange={(e) => updateItem(idx, "discountPercentage", Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                              className="w-16 border border-amber-300 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-amber-400"
+                            />
+                          </div>
+
                           <div className="w-20 text-right font-bold text-xs text-gray-800">
                             ৳{((Number(item.unitPrice) || 0) * (Number(item.quantity) || 1)).toFixed(2)}
                           </div>
@@ -1304,7 +1344,7 @@ export default function SalesPage() {
                         min="0"
                         step="0.01"
                         max={discountType === "percentage" ? 100 : subtotal}
-                        value={discountValue}
+                        value={discountValue || ""}
                         onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
                         placeholder="0"
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
@@ -1363,6 +1403,21 @@ export default function SalesPage() {
                     </div>
                   </div>
 
+                  {(paymentMethod === "bKash" || paymentMethod === "Nagad" || paymentMethod === "Debit / Credit Card" || paymentMethod === "Bank Transfer") && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Transaction ID / Last Digits
+                      </label>
+                      <input
+                        value={paymentReference}
+                        onChange={(e) => setPaymentReference(e.target.value)}
+                        placeholder="Enter transaction ID or last 4 digits"
+                        maxLength={100}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                      />
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Notes / Instructions</label>
                     <input
@@ -1382,9 +1437,15 @@ export default function SalesPage() {
                       <span>Subtotal:</span>
                       <span className="font-semibold">৳{subtotal.toFixed(2)}</span>
                     </div>
+                    {itemDiscountAmount > 0 && (
+                      <div className="flex justify-between text-amber-600">
+                        <span>Service discounts:</span>
+                        <span className="font-semibold">-৳{itemDiscountAmount.toFixed(2)}</span>
+                      </div>
+                    )}
                     {discountAmount > 0 && (
                       <div className="flex justify-between text-amber-600">
-                        <span>Discount:</span>
+                        <span>Overall discount:</span>
                         <span className="font-semibold">-৳{discountAmount.toFixed(2)}</span>
                       </div>
                     )}
@@ -1519,6 +1580,11 @@ export default function SalesPage() {
                   <span>Payment Method: {viewSale.paymentMethod}</span>
                   <span className="font-semibold text-emerald-700">{viewSale.paymentStatus}</span>
                 </div>
+                {viewSale.paymentReference && (
+                  <div className="text-[11px] text-gray-500">
+                    Transaction ID / Last Digits: <span className="font-semibold">{viewSale.paymentReference}</span>
+                  </div>
+                )}
               </div>
 
               {/* Footer */}

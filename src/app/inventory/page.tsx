@@ -224,8 +224,14 @@ export default function InventoryPage() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("Soft-delete this item from inventory? It will be marked inactive.")) return;
-    await fetch(`/api/inventory/${id}`, { method: "DELETE" });
-    fetchItems();
+    const scrollY = window.scrollY;
+    const res = await fetch(`/api/inventory/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      setItems((current) => current.filter((item) => item.id !== id));
+      requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
+    } else {
+      alert("Failed to delete inventory item.");
+    }
   };
 
   const handleQuickUpdateQty = async (id: number) => {

@@ -37,7 +37,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       const {
         customerName, customerPhone, ownerId, petId, petName, items,
         discountType = "none", discountValue = 0, paidAmount = 0,
-        paymentMethod = "Cash", doctorOrStaff, notes,
+        paymentMethod = "Cash", paymentReference, doctorOrStaff, notes,
       } = body;
       if (!customerName?.trim() || !Array.isArray(items) || items.length === 0) {
         return NextResponse.json({ error: "Customer name and at least one item are required." }, { status: 400 });
@@ -48,15 +48,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         name: String(item.name || "").trim(),
         unitPrice: Number(item.unitPrice),
         quantity: Number(item.quantity),
+        discountPercentage: Math.min(100, Math.max(0, Number(item.discountPercentage) || 0)),
       }));
       if (normalizedItems.some((item) => !item.name || !Number.isFinite(item.unitPrice) || item.unitPrice < 0 || !Number.isInteger(item.quantity) || item.quantity < 1)) {
         return NextResponse.json({ error: "Each item needs a valid name, price, and quantity." }, { status: 400 });
       }
       const subtotal = normalizedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+      const itemDiscountAmount = normalizedItems.reduce(
+        (sum, item) => sum + item.unitPrice * item.quantity * item.discountPercentage / 100,
+        0
+      );
+      const afterItemDiscounts = Math.max(0, subtotal - itemDiscountAmount);
       const numericDiscount = Math.max(0, Number(discountValue) || 0);
-      const rawDiscount = discountType === "percentage" ? subtotal * numericDiscount / 100 : discountType === "fixed" ? numericDiscount : 0;
-      const discountAmount = Math.min(rawDiscount, subtotal);
-      const totalAmount = Math.max(0, subtotal - discountAmount);
+      const rawDiscount = discountType === "percentage" ? afterItemDiscounts * numericDiscount / 100 : discountType === "fixed" ? numericDiscount : 0;
+      const overallDiscountAmount = Math.min(rawDiscount, afterItemDiscounts);
+      const discountAmount = itemDiscountAmount + overallDiscountAmount;
+      const totalAmount = Math.max(0, afterItemDiscounts - overallDiscountAmount);
       const numPaid = Math.max(0, Number(paidAmount) || 0);
       const changeAmount = Math.max(0, numPaid - totalAmount);
       const [existing] = await db.select().from(sales).where(eq(sales.id, saleId));
@@ -79,11 +86,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           subtotal: subtotal.toFixed(2),
           discountType,
           discountValue: numericDiscount.toFixed(2),
+          overallDiscountAmount: overallDiscountAmount.toFixed(2),
+          itemDiscountAmount: itemDiscountAmount.toFixed(2),
           discountAmount: discountAmount.toFixed(2),
           totalAmount: totalAmount.toFixed(2),
           paidAmount: numPaid.toFixed(2),
           changeAmount: changeAmount.toFixed(2),
           paymentMethod,
+          paymentReference: paymentReference?.trim() || null,
           paymentStatus: numPaid >= totalAmount ? "Paid" : "Due",
           doctorOrStaff: doctorOrStaff || null,
           notes: notes || null,
@@ -93,7 +103,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         await tx.insert(saleItems).values(normalizedItems.map((item) => ({
           saleId, itemType: item.itemType, inventoryId: item.inventoryId, name: item.name,
           unitPrice: item.unitPrice.toFixed(2), quantity: item.quantity,
-          totalPrice: (item.unitPrice * item.quantity).toFixed(2),
+          discountPercentage: item.discountPercentage.toFixed(2),
+          discountAmount: (item.unitPrice * item.quantity * item.discountPercentage / 100).toFixed(2),
+          totalPrice: (item.unitPrice * item.quantity * (1 - item.discountPercentage / 100)).toFixed(2),
         })));
       });
       const [updated] = await db.select().from(sales).where(eq(sales.id, saleId));

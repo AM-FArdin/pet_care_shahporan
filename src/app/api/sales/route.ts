@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
       items,
       discountType = "none",
       discountValue = 0,
+      paymentReference,
       paidAmount = 0,
       paymentMethod = "Cash",
       paymentStatus = "Paid",
@@ -116,22 +117,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Calculate subtotal from items
+    // Calculate subtotal and per-item discounts.
     let subtotal = 0;
+    let itemDiscountAmount = 0;
     for (const item of items) {
-      subtotal += Number(item.unitPrice) * Number(item.quantity);
+      const itemTotal = Number(item.unitPrice) * Number(item.quantity);
+      const itemDiscountPercentage = Math.min(100, Math.max(0, Number(item.discountPercentage) || 0));
+      subtotal += itemTotal;
+      itemDiscountAmount += itemTotal * itemDiscountPercentage / 100;
     }
 
-    // Calculate discount
-    let discountAmount = 0;
+    // Apply the invoice-level discount after individual item discounts.
+    const afterItemDiscounts = Math.max(0, subtotal - itemDiscountAmount);
+    let overallDiscountAmount = 0;
     const numDiscountValue = Number(discountValue) || 0;
     if (discountType === "percentage") {
-      discountAmount = (subtotal * numDiscountValue) / 100;
+      overallDiscountAmount = (afterItemDiscounts * numDiscountValue) / 100;
     } else if (discountType === "fixed") {
-      discountAmount = numDiscountValue;
+      overallDiscountAmount = numDiscountValue;
     }
-    discountAmount = Math.min(discountAmount, subtotal);
-    const totalAmount = Math.max(0, subtotal - discountAmount);
+    overallDiscountAmount = Math.min(overallDiscountAmount, afterItemDiscounts);
+    const discountAmount = itemDiscountAmount + overallDiscountAmount;
+    const totalAmount = Math.max(0, afterItemDiscounts - overallDiscountAmount);
 
     const numPaid = Number(paidAmount) || totalAmount;
     const changeAmount = Math.max(0, numPaid - totalAmount);
@@ -160,11 +167,14 @@ export async function POST(req: NextRequest) {
         subtotal: subtotal.toFixed(2),
         discountType,
         discountValue: numDiscountValue.toFixed(2),
+        overallDiscountAmount: overallDiscountAmount.toFixed(2),
+        itemDiscountAmount: itemDiscountAmount.toFixed(2),
         discountAmount: discountAmount.toFixed(2),
         totalAmount: totalAmount.toFixed(2),
         paidAmount: numPaid.toFixed(2),
         changeAmount: changeAmount.toFixed(2),
         paymentMethod,
+        paymentReference: paymentReference?.trim() || null,
         paymentStatus,
         doctorOrStaff: doctorOrStaff || null,
         notes: notes || null,
@@ -176,6 +186,8 @@ export async function POST(req: NextRequest) {
     // Insert line items and auto-update inventory stock
     for (const item of items) {
       const itemTotal = Number(item.unitPrice) * Number(item.quantity);
+      const itemDiscountPercentage = Math.min(100, Math.max(0, Number(item.discountPercentage) || 0));
+      const itemDiscount = itemTotal * itemDiscountPercentage / 100;
       await db.insert(saleItems).values({
         saleId,
         itemType: item.itemType || "product",
@@ -183,7 +195,9 @@ export async function POST(req: NextRequest) {
         name: item.name,
         unitPrice: Number(item.unitPrice).toFixed(2),
         quantity: parseInt(item.quantity) || 1,
-        totalPrice: itemTotal.toFixed(2),
+        discountPercentage: itemDiscountPercentage.toFixed(2),
+        discountAmount: itemDiscount.toFixed(2),
+        totalPrice: (itemTotal - itemDiscount).toFixed(2),
       });
 
       // Deduct inventory using Drizzle (PostgreSQL GREATEST)

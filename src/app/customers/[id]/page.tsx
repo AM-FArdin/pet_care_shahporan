@@ -535,14 +535,38 @@ export default function CustomerProfilePage({ params }: { params: Promise<{ id: 
 
   const deleteVax = async (vaxId: number) => {
     if (!confirm("Are you sure you want to delete this vaccination record?")) return;
-    await fetch(`/api/vaccinations/${vaxId}`, { method: "DELETE" });
-    fetchOwner({ preserveTabs: true });
+    const scrollY = window.scrollY;
+    const res = await fetch(`/api/vaccinations/${vaxId}`, { method: "DELETE" });
+    if (res.ok) {
+      setOwner((current) => current ? {
+        ...current,
+        pets: current.pets.map((pet) => ({
+          ...pet,
+          vaccinations: pet.vaccinations?.filter((vax) => vax.id !== vaxId),
+        })),
+      } : current);
+      requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
+    } else {
+      alert("Failed to delete vaccination record.");
+    }
   };
 
   const deleteRecord = async (recId: number) => {
     if (!confirm("Are you sure you want to delete this medical visit record?")) return;
-    await fetch(`/api/medical-records/${recId}`, { method: "DELETE" });
-    fetchOwner({ preserveTabs: true });
+    const scrollY = window.scrollY;
+    const res = await fetch(`/api/medical-records/${recId}`, { method: "DELETE" });
+    if (res.ok) {
+      setOwner((current) => current ? {
+        ...current,
+        pets: current.pets.map((pet) => ({
+          ...pet,
+          medicalRecords: pet.medicalRecords?.filter((record) => record.id !== recId),
+        })),
+      } : current);
+      requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
+    } else {
+      alert("Failed to delete medical record.");
+    }
   };
 
   const openEditOwner = () => {
@@ -623,10 +647,16 @@ export default function CustomerProfilePage({ params }: { params: Promise<{ id: 
 
   const softDeletePet = async (petId: number, petName: string) => {
     if (!confirm(`Mark ${petName} as inactive? They will not appear in the active list.`)) return;
-    await fetch(`/api/pets/${petId}`, {
+    const scrollY = window.scrollY;
+    const res = await fetch(`/api/pets/${petId}`, {
       method: "DELETE",
     });
-    fetchOwner({ preserveTabs: true });
+    if (res.ok) {
+      setOwner((current) => current ? { ...current, pets: current.pets.filter((pet) => pet.id !== petId) } : current);
+      requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
+    } else {
+      alert("Failed to delete pet.");
+    }
   };
 
   const formatDate = (d: string | null) =>

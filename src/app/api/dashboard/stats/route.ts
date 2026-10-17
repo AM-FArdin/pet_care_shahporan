@@ -21,30 +21,34 @@ export async function GET() {
   try {
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    const [ownerCount] = await db.select({ count: sql<number>`COUNT(*)` }).from(owners);
-    const [petCount] = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(pets)
-      .where(eq(pets.isActive, true));
+    const [
+      [ownerCount],
+      [petCount],
+      [inventoryCount],
+      [todaySales],
+      [salesTotals],
+      [expenseTotals],
+    ] = await Promise.all([
+      db.select({ count: sql<number>`COUNT(*)` }).from(owners),
+      db.select({ count: sql<number>`COUNT(*)` }).from(pets).where(eq(pets.isActive, true)),
+      db.select({ count: sql<number>`COUNT(*)` }).from(inventory).where(
+        sql`${inventory.isActive} = true AND ${inventory.quantity} <= COALESCE(${inventory.minimumStock}, 0)`
+      ),
+      db.select({ revenue: sql<string>`COALESCE(SUM(${sales.totalAmount}), 0)` }).from(sales)
+        .where(sql`DATE(${sales.createdAt}) = ${todayStr}`),
+      db.select({
+        amount: sql<string>`COALESCE(SUM(${sales.totalAmount}), 0)`,
+        discounts: sql<string>`COALESCE(SUM(${sales.discountAmount}), 0)`,
+      }).from(sales),
+      db.select({ amount: sql<string>`COALESCE(SUM(${expenses.amount}), 0)` }).from(expenses)
+        .where(eq(expenses.isDeleted, false)),
+    ]);
 
-    const allInventory = await db.select().from(inventory).where(eq(inventory.isActive, true));
-    const lowStockCount = allInventory.filter(
-      (i) => i.minimumStock !== null && i.quantity <= (i.minimumStock ?? 0)
-    ).length;
-
-    const todaySales = await db
-      .select()
-      .from(sales)
-      .where(sql`DATE(created_at) = ${todayStr}`);
-    const todayRevenue = todaySales.reduce((sum, s) => sum + Number(s.totalAmount || 0), 0);
-
-    const allSales = await db.select().from(sales);
-    const totalSalesAmount = allSales.reduce((sum, s) => sum + Number(s.totalAmount || 0), 0);
-    const totalDiscounts = allSales.reduce((sum, s) => sum + Number(s.discountAmount || 0), 0);
-
-    const allExpenses = await db.select().from(expenses).where(eq(expenses.isDeleted, false));
-    const totalExpenses = allExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-
+    const lowStockCount = Number(inventoryCount.count);
+    const todayRevenue = Number(todaySales.revenue);
+    const totalSalesAmount = Number(salesTotals.amount);
+    const totalDiscounts = Number(salesTotals.discounts);
+    const totalExpenses = Number(expenseTotals.amount);
     const netRevenue = totalSalesAmount - totalDiscounts - totalExpenses;
 
     return NextResponse.json({

@@ -123,6 +123,12 @@ const CREATE_TABLES_SQL = [
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMP DEFAULT NOW() NOT NULL
   )`,
+
+  `ALTER TABLE sales ADD COLUMN IF NOT EXISTS overall_discount_amount NUMERIC(10, 2) DEFAULT 0.00 NOT NULL`,
+  `ALTER TABLE sales ADD COLUMN IF NOT EXISTS item_discount_amount NUMERIC(10, 2) DEFAULT 0.00 NOT NULL`,
+  `ALTER TABLE sales ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(100)`,
+  `ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC(5, 2) DEFAULT 0.00 NOT NULL`,
+  `ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10, 2) DEFAULT 0.00 NOT NULL`,
 ];
 
 // Seed items run one-by-one to avoid multi-statement errors
@@ -169,26 +175,37 @@ const SEED_INVENTORY_SQL = [
 ];
 
 let isInitialized = false;
+let initializationPromise: Promise<void> | null = null;
 
 export async function ensureTablesExist() {
   if (isInitialized) return;
+  if (initializationPromise) return initializationPromise;
   if (!isDbConfigured || !process.env.DATABASE_URL) {
     throw new Error(
       "DATABASE_URL is not configured. Please set a valid Neon PostgreSQL connection string."
     );
   }
 
-  const sqlClient = neon(process.env.DATABASE_URL);
+  initializationPromise = (async () => {
+    const sqlClient = neon(process.env.DATABASE_URL!);
 
-  // Run each statement individually — Neon HTTP driver does not support
-  // multiple commands in a single prepared statement call
-  for (const statement of CREATE_TABLES_SQL) {
-    await sqlClient.query(statement);
+    // Run each statement individually — Neon HTTP driver does not support
+    // multiple commands in a single prepared statement call.
+    for (const statement of CREATE_TABLES_SQL) {
+      await sqlClient.query(statement);
+    }
+
+    for (const statement of SEED_INVENTORY_SQL) {
+      await sqlClient.query(statement);
+    }
+
+    isInitialized = true;
+  })();
+
+  try {
+    await initializationPromise;
+  } catch (error) {
+    initializationPromise = null;
+    throw error;
   }
-
-  for (const statement of SEED_INVENTORY_SQL) {
-    await sqlClient.query(statement);
-  }
-
-  isInitialized = true;
 }

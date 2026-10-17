@@ -116,7 +116,7 @@ export async function GET() {
       const phoneInfo = normalizeBangladeshPhone(row.ownerPhone);
       const reminderTitle = `Vaccination Booster: ${row.actualVaccineName}`;
 
-      const message = `Assalamu Alaikum ${row.ownerName},\nThis is a friendly reminder from Shahporan Pet & Vet Care, Sylhet.\nYour pet ${row.petName} (${row.species}) has a scheduled vaccination booster (${row.actualVaccineName}) due on ${row.dueDate}.\n\nPlease visit our clinic at BIDC Point, Shahporan, Sylhet or call 01521765716 to confirm your slot.\nHealthy Animals, Happier Lives!`;
+      const message = `আসসালামু আলাইকুম ${row.ownerName},\nশাহপরান পেট & ভেট কেয়ার, সিলেট থেকে আপনাকে আন্তরিকভাবে মনে করিয়ে দিচ্ছি।\nআপনার পোষা প্রাণী ${row.petName} (${row.species})-এর ${row.actualVaccineName} টিকার বুস্টার ডোজ ${row.dueDate} তারিখে দেওয়ার কথা।\n\nসময় নিশ্চিত করতে BIDC Point, শাহপরান, সিলেটের আমাদের ক্লিনিকে আসুন অথবা ০১৫২১৭৬৫৭১৬ নম্বরে যোগাযোগ করুন।\nসুস্থ প্রাণী, সুখী জীবন!`;
 
       alerts.push({
         id: `vac-${row.vacId}`,
@@ -171,7 +171,7 @@ export async function GET() {
       const phoneInfo = normalizeBangladeshPhone(row.ownerPhone);
       const reminderTitle = `Clinical Follow-up (${row.visitType}): ${row.diagnosis || "Post-treatment checkup"}`;
 
-      const message = `Assalamu Alaikum ${row.ownerName},\nThis is a follow-up reminder from Shahporan Pet & Vet Care, Sylhet.\nYour pet ${row.petName} (${row.species}) has a scheduled clinical follow-up visit on ${row.nextVisitDate} (${row.visitType}).\n\nPlease visit our clinic at BIDC Point, Shahporan, Sylhet or call 01521765716 if you need to reschedule.\nThank you!`;
+      const message = `আসসালামু আলাইকুম ${row.ownerName},\nশাহপরান পেট & ভেট কেয়ার, সিলেট থেকে ফলো-আপ ভিজিটের কথা মনে করিয়ে দিচ্ছি।\nআপনার পোষা প্রাণী ${row.petName} (${row.species})-এর ${row.visitType} ফলো-আপ ভিজিট ${row.nextVisitDate} তারিখে নির্ধারিত রয়েছে।\n\nভিজিটের সময় পরিবর্তন করতে BIDC Point, শাহপরান, সিলেটের আমাদের ক্লিনিকে আসুন অথবা ০১৫২১৭৬৫৭১৬ নম্বরে যোগাযোগ করুন।\nধন্যবাদ!`;
 
       alerts.push({
         id: `med-${row.medId}`,
