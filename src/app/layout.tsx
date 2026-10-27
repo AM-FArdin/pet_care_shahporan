@@ -22,7 +22,7 @@ export default function RootLayout({
         <Suspense fallback={<div className="h-16 bg-white border-b border-gray-200" />}>
           <Navbar />
         </Suspense>
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:pl-28 lg:pr-8 py-6 sm:py-8">
+        <main className="app-main px-4 sm:px-6 lg:pr-8 py-6 sm:py-8">
           {children}
         </main>
       </body>

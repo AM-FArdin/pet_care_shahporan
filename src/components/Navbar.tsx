@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { CalendarDays, FileText, Home, LogOut, Menu, Package, Receipt, ShieldCheck, Users, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const navLinks = [
   { href: "/", label: "Home", icon: Home },
@@ -20,6 +20,18 @@ export default function Navbar() {
   const [expanded, setExpanded] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const isLoginPage = pathname === "/login";
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--sidebar-width", "4.5rem");
+  }, []);
+
+  const toggleSidebar = () => {
+    setExpanded((current) => {
+      const next = !current;
+      document.documentElement.style.setProperty("--sidebar-width", next ? "16rem" : "4.5rem");
+      return next;
+    });
+  };
 
   const handleLogout = async () => {
     if (!confirm("Are you sure you want to log out of the admin portal?")) return;
@@ -44,7 +56,7 @@ export default function Navbar() {
             <Image src="/logo.jpg" alt="Shahporan Pet & Vet Care" width={38} height={38} className="rounded-full object-cover" priority />
             <span className="min-w-0"><span className="block truncate text-sm font-bold text-[#1a2f5e]">Shahporan</span><span className="block text-[11px] font-semibold text-[#1a7f7f]">Pet &amp; Vet Care</span></span>
           </Link>}
-          <button onClick={() => setExpanded(!expanded)} className="rounded-lg p-2 text-gray-500 hover:bg-teal-50 hover:text-teal-700" aria-label={expanded ? "Collapse menu" : "Expand menu"}>
+          <button onClick={toggleSidebar} className="rounded-lg p-2 text-gray-500 hover:bg-teal-50 hover:text-teal-700" aria-label={expanded ? "Collapse menu" : "Expand menu"}>
             {expanded ? <X size={19} /> : <Menu size={20} />}
           </button>
         </div>

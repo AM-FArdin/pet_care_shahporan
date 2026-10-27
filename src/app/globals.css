@@ -4,10 +4,34 @@
   --teal: #1a7f7f;
   --navy: #1a2f5e;
   --amber: #f59e0b;
+  --sidebar-width: 4.5rem;
 }
 
 * {
   box-sizing: border-box;
+}
+
+.app-main {
+  transition: padding-left 200ms ease;
+}
+
+@media (min-width: 1024px) {
+  .app-main {
+    width: calc(100% - var(--sidebar-width));
+    max-width: none;
+    margin-left: var(--sidebar-width);
+    padding-left: 2rem;
+    transition:
+      width 200ms ease,
+      margin-left 200ms ease;
+  }
+
+  .app-main > * {
+    width: 100%;
+    max-width: 90rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
 }
 
 .animate-fade-in {
