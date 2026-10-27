@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Search, Plus, Phone, User, ChevronRight, X, Loader2, AlertCircle, RefreshCw, CheckCircle2 } from "lucide-react";
+import { Search, Plus, Phone, User, ChevronRight, X, Loader2, AlertCircle, RefreshCw, CheckCircle2, Trash2 } from "lucide-react";
 import type { Owner } from "@/lib/db/schema";
 
 export default function CustomersPage() {
@@ -81,6 +81,16 @@ export default function CustomersPage() {
       alert("Error saving customer. Please check database connection.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: number, name: string) => {
+    if (!confirm(`Delete customer "${name}" and all linked pets and medical records? This cannot be undone.`)) return;
+    const res = await fetch(`/api/owners/${id}`, { method: "DELETE" });
+    if (res.ok) setOwners((current) => current.filter((owner) => owner.id !== id));
+    else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Failed to delete customer.");
     }
   };
 
@@ -209,7 +219,17 @@ export default function CustomersPage() {
                     {owner.address && <p className="text-xs text-gray-400 mt-1 line-clamp-1">{owner.address}</p>}
                   </div>
                 </div>
-                <ChevronRight size={18} className="text-gray-400 group-hover:text-teal-500 transition-colors" />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    title="Delete customer"
+                    onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleDelete(owner.id, owner.name); }}
+                    className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                  <ChevronRight size={18} className="text-gray-400 group-hover:text-teal-500 transition-colors" />
+                </div>
               </Link>
             );
           })

@@ -62,7 +62,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   const { id } = await params;
   try {
-    await db.delete(owners).where(eq(owners.id, parseInt(id)));
+    const ownerId = Number(id);
+    if (!Number.isInteger(ownerId)) return NextResponse.json({ error: "Invalid owner ID" }, { status: 400 });
+    const deleted = await db.delete(owners).where(eq(owners.id, ownerId)).returning({ id: owners.id });
+    if (deleted.length === 0) return NextResponse.json({ error: "Owner not found" }, { status: 404 });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error(error);

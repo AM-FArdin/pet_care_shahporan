@@ -104,12 +104,9 @@ function LoginForm() {
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold text-gray-700">
-                  Admin Password
-                </label>
-                <span className="text-[11px] text-gray-400 font-medium">Default: shahporan2026</span>
-              </div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                Admin Password
+              </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                   <Lock size={16} />

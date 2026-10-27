@@ -74,9 +74,54 @@ export const inventory = pgTable("inventory", {
   expiryDate: date("expiry_date"),
   batchNumber: varchar("batch_number", { length: 100 }),
   location: varchar("location", { length: 100 }),
+  concentration: varchar("concentration", { length: 100 }),
+  medicineSource: varchar("medicine_source", { length: 500 }),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const consultationSettings = pgTable("consultation_settings", {
+  id: serial("id").primaryKey(),
+  consultationFee: numeric("consultation_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const clinicServices = pgTable("clinic_services", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  fee: numeric("fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  isActive: boolean("is_active").default(true).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const appointments = pgTable("appointments", {
+  id: serial("id").primaryKey(),
+  ownerId: integer("owner_id").references(() => owners.id, { onDelete: "cascade" }).notNull(),
+  petId: integer("pet_id").references(() => pets.id, { onDelete: "cascade" }).notNull(),
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  reason: varchar("reason", { length: 255 }),
+  status: varchar("status", { length: 30 }).notNull().default("scheduled"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const prescriptions = pgTable("prescriptions", {
+  id: serial("id").primaryKey(),
+  petId: integer("pet_id").references(() => pets.id, { onDelete: "cascade" }).notNull(),
+  medicineName: varchar("medicine_name", { length: 255 }).notNull(),
+  concentration: varchar("concentration", { length: 100 }),
+  weightKg: numeric("weight_kg", { precision: 6, scale: 2 }).notNull(),
+  doseMgPerKg: numeric("dose_mg_per_kg", { precision: 8, scale: 3 }).notNull(),
+  calculatedDoseMg: numeric("calculated_dose_mg", { precision: 10, scale: 3 }).notNull(),
+  frequency: varchar("frequency", { length: 100 }).notNull(),
+  duration: varchar("duration", { length: 100 }),
+  instructions: text("instructions"),
+  sourceName: varchar("source_name", { length: 255 }).notNull(),
+  sourceReference: varchar("source_reference", { length: 500 }),
+  clinicianVerified: boolean("clinician_verified").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // ─── Sales (Invoices / Billing) ──────────────────────────────────────────────
@@ -146,6 +191,10 @@ export type MedicalRecord = typeof medicalRecords.$inferSelect;
 export type NewMedicalRecord = typeof medicalRecords.$inferInsert;
 export type InventoryItem = typeof inventory.$inferSelect;
 export type NewInventoryItem = typeof inventory.$inferInsert;
+export type ConsultationSettings = typeof consultationSettings.$inferSelect;
+export type ClinicService = typeof clinicServices.$inferSelect;
+export type Appointment = typeof appointments.$inferSelect;
+export type Prescription = typeof prescriptions.$inferSelect;
 export type Sale = typeof sales.$inferSelect;
 export type NewSale = typeof sales.$inferInsert;
 export type SaleItem = typeof saleItems.$inferSelect;

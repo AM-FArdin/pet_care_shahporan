@@ -37,6 +37,13 @@ export default function InventoryPage() {
   const [form, setForm] = useState(emptyForm);
   const [quickEditId, setQuickEditId] = useState<number | null>(null);
   const [quickEditQty, setQuickEditQty] = useState("");
+  const [services, setServices] = useState<Array<{ id: number; name: string; fee: string }>>([]);
+  const [savingServiceId, setSavingServiceId] = useState<number | null>(null);
+  const [newServiceName, setNewServiceName] = useState("");
+  const [newServiceFee, setNewServiceFee] = useState("");
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  const [showAddService, setShowAddService] = useState(false);
+  const [currentTime] = useState(() => Date.now());
 
   // Quick Adjustment Modal state
   const [adjustItem, setAdjustItem] = useState<InventoryItem | null>(null);
@@ -69,8 +76,49 @@ export default function InventoryPage() {
   }, []);
 
   useEffect(() => {
-    fetchItems();
+    const timer = window.setTimeout(() => {
+      void fetchItems();
+      void fetch("/api/clinic-services").then((res) => res.json()).then((data) => {
+        if (Array.isArray(data)) {
+          setServices(data);
+        }
+      }).catch(() => undefined);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [fetchItems]);
+
+  const saveServiceFee = async (service: { id: number; fee: string }) => {
+    setSavingServiceId(service.id);
+    try {
+      const res = await fetch(`/api/clinic-services/${service.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fee: service.fee }),
+      });
+      if (!res.ok) alert("Failed to update service fee.");
+    } finally {
+      setSavingServiceId(null);
+    }
+  };
+
+  const addService = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const res = await fetch("/api/clinic-services", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newServiceName, fee: newServiceFee }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Failed to add service.");
+      return;
+    }
+    setServices((current) => [...current, data]);
+    setSelectedServiceId(data.id);
+    setShowAddService(false);
+    setNewServiceName("");
+    setNewServiceFee("");
+  };
 
   const handleInitDb = async () => {
     setInitLoading(true);
@@ -113,7 +161,7 @@ export default function InventoryPage() {
   const lowStock = safeItems.filter((i) => i.minimumStock !== null && i.quantity <= i.minimumStock);
   const expiringSoon = safeItems.filter((i) => {
     if (!i.expiryDate) return false;
-    const diff = (new Date(i.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    const diff = (new Date(i.expiryDate).getTime() - currentTime) / (1000 * 60 * 60 * 24);
     return diff <= 30 && diff >= 0;
   });
 
@@ -251,7 +299,7 @@ export default function InventoryPage() {
   const isExpired = (d: string | null) => d ? new Date(d) < new Date() : false;
   const isExpiringSoon = (d: string | null) => {
     if (!d) return false;
-    const diff = (new Date(d).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    const diff = (new Date(d).getTime() - currentTime) / (1000 * 60 * 60 * 24);
     return diff <= 30 && diff >= 0;
   };
 
@@ -311,6 +359,48 @@ export default function InventoryPage() {
           <span>{initSuccess}</span>
         </div>
       )}
+
+      <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <div>
+          <h2 className="font-semibold text-[#1a2f5e]">Clinic service fees</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Manage every service price used by Sales &amp; Billing. Changes apply to newly added service line items.</p>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <label className="flex-1 text-xs font-medium text-gray-700">
+            Select a service to view or edit its fee
+            <select
+              value={selectedServiceId ?? ""}
+              onChange={(e) => setSelectedServiceId(Number(e.target.value))}
+              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+            >
+              <option value="">Choose a service to edit</option>
+              {services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => setShowAddService((current) => !current)}
+            className="px-3 py-2 rounded-lg border border-[#1a2f5e] text-[#1a2f5e] text-sm font-medium hover:bg-blue-50"
+          >
+            {showAddService ? "Cancel" : "Add service"}
+          </button>
+        </div>
+        {services.filter((service) => service.id === selectedServiceId).map((service) => (
+          <div key={service.id} className="rounded-lg border border-teal-200 bg-teal-50/40 p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+            <p className="flex-1 text-sm font-medium text-gray-700">{service.name}</p>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">৳</span>
+              <input min="0" step="0.01" type="number" value={service.fee} onChange={(e) => setServices((current) => current.map((item) => item.id === service.id ? { ...item, fee: e.target.value } : item))} className="w-32 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" aria-label={`${service.name} fee`} />
+              <button type="button" onClick={() => saveServiceFee(service)} disabled={savingServiceId === service.id} className="px-2.5 py-1.5 rounded-lg bg-[#1a7f7f] text-white text-xs font-medium disabled:opacity-60">{savingServiceId === service.id ? "..." : "Save"}</button>
+            </div>
+          </div>
+        ))}
+        {showAddService && <form onSubmit={addService} className="flex flex-col sm:flex-row gap-2 border-t border-gray-100 pt-4">
+          <input required value={newServiceName} onChange={(e) => setNewServiceName(e.target.value)} placeholder="New service name" className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          <input required min="0" step="0.01" type="number" value={newServiceFee} onChange={(e) => setNewServiceFee(e.target.value)} placeholder="Fee (৳)" className="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          <button className="px-3 py-2 rounded-lg bg-[#1a2f5e] text-white text-sm font-medium">Save new service</button>
+        </form>}
+      </section>
 
       {/* Interactive Alert Bar */}
       {(lowStock.length > 0 || expiringSoon.length > 0) && (
@@ -407,7 +497,7 @@ export default function InventoryPage() {
             <span className="text-xs text-gray-500">Sort:</span>
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
               className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
             >
               <option value="name">Name (A-Z)</option>

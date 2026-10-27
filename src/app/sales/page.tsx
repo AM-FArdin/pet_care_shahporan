@@ -97,15 +97,7 @@ interface SaleDetails extends SaleRecord {
   }>;
 }
 
-const COMMON_SERVICES = [
-  { name: "General Consultation Fee", price: 300 },
-  { name: "Follow-up Consultation Fee", price: 150 },
-  { name: "Vaccination Administration Fee", price: 100 },
-  { name: "Deworming Administration Fee", price: 100 },
-  { name: "Wound Dressing / Minor Care", price: 250 },
-  { name: "Diagnostic Test Fee (Lab)", price: 500 },
-  { name: "Surgery / Procedure Fee", price: 1500 },
-];
+type ClinicService = { id: number; name: string; fee: string };
 
 const DOCTORS = ["Dr. Zahidul Islam Munna", "Dr. Ali Md. Mahedi Hasan Nadel"];
 
@@ -152,6 +144,7 @@ export default function SalesPage() {
   // Available customers and inventory for the new sale form
   const [owners, setOwners] = useState<Owner[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [clinicServices, setClinicServices] = useState<ClinicService[]>([]);
 
   // New Sale Form State
   const [selectedOwnerId, setSelectedOwnerId] = useState<string>("");
@@ -190,14 +183,17 @@ export default function SalesPage() {
 
   const loadAuxiliaryData = async () => {
     try {
-      const [ownersRes, invRes] = await Promise.all([
+      const [ownersRes, invRes, servicesRes] = await Promise.all([
         fetch("/api/owners"),
         fetch("/api/inventory"),
+        fetch("/api/clinic-services"),
       ]);
       const ownersData = await ownersRes.json();
       const invData = await invRes.json();
       if (Array.isArray(ownersData)) setOwners(ownersData);
       if (Array.isArray(invData)) setInventoryItems(invData);
+      const servicesData = await servicesRes.json();
+      if (Array.isArray(servicesData)) setClinicServices(servicesData);
     } catch (err) {
       console.warn("Failed to load auxiliary data:", err);
     }
@@ -456,13 +452,13 @@ export default function SalesPage() {
 
   const addService = (serviceName: string) => {
     if (!serviceName) return;
-    const s = COMMON_SERVICES.find((cs) => cs.name === serviceName);
+    const s = clinicServices.find((cs) => cs.name === serviceName);
     setSaleItemsList((prev) => [
       ...prev,
       {
         itemType: "service",
         name: s ? s.name : serviceName,
-        unitPrice: s ? s.price : 0,
+        unitPrice: s ? Number(s.fee) : 0,
         quantity: 1,
         discountPercentage: 0,
       },
@@ -1227,9 +1223,9 @@ export default function SalesPage() {
                       className="text-xs border border-blue-300 bg-blue-50 text-blue-800 rounded-lg px-2.5 py-1.5 font-medium cursor-pointer"
                     >
                       <option value="">+ Add Clinic Service...</option>
-                      {COMMON_SERVICES.map((s) => (
+                      {clinicServices.map((s) => (
                         <option key={s.name} value={s.name}>
-                          {s.name} (৳{s.price})
+                          {s.name} (৳{s.fee})
                         </option>
                       ))}
                     </select>

@@ -67,6 +67,16 @@ function getUrgency(daysDiff: number): "overdue" | "due_today" | "due_soon" | "u
   return "later";
 }
 
+const BANGLA_DIGITS = "০১২৩৪৫৬৭৮৯";
+const BANGLA_MONTHS = ["জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"];
+function toBanglaDigits(value: string): string {
+  return value.replace(/[0-9]/g, (digit) => BANGLA_DIGITS[Number(digit)]);
+}
+function formatBanglaDate(dateString: string): string {
+  const [year, month, day] = dateString.split("-").map(Number);
+  return `${toBanglaDigits(String(day))} ${BANGLA_MONTHS[month - 1]} ${toBanglaDigits(String(year))}`;
+}
+
 export async function GET() {
   if (!isDbConfigured || !db) {
     return NextResponse.json({
@@ -116,7 +126,7 @@ export async function GET() {
       const phoneInfo = normalizeBangladeshPhone(row.ownerPhone);
       const reminderTitle = `Vaccination Booster: ${row.actualVaccineName}`;
 
-      const message = `আসসালামু আলাইকুম ${row.ownerName},\nশাহপরান পেট & ভেট কেয়ার, সিলেট থেকে আপনাকে আন্তরিকভাবে মনে করিয়ে দিচ্ছি।\nআপনার পোষা প্রাণী ${row.petName} (${row.species})-এর ${row.actualVaccineName} টিকার বুস্টার ডোজ ${row.dueDate} তারিখে দেওয়ার কথা।\n\nসময় নিশ্চিত করতে BIDC Point, শাহপরান, সিলেটের আমাদের ক্লিনিকে আসুন অথবা ০১৫২১৭৬৫৭১৬ নম্বরে যোগাযোগ করুন।\nসুস্থ প্রাণী, সুখী জীবন!`;
+      const message = `আসসালামু আলাইকুম, ${row.ownerName}!\n\nশাহপরান পেট অ্যান্ড ভেট কেয়ার, সিলেট থেকে আপনাকে জানাচ্ছি যে, আপনার প্রিয় পোষা প্রাণী ${row.petName} (${row.species})-এর ${row.actualVaccineName} টিকার বুস্টার ডোজ আগামী ${formatBanglaDate(row.dueDate)} তারিখে দেওয়ার সময় হয়েছে।\n\nতাই ${row.petName}-র টিকা দেওয়ার সময় নিশ্চিত করতে আমাদের ক্লিনিকে যোগাযোগ করুন অথবা সরাসরি চলে আসুন।\n\n📍 ঠিকানা: BIDC Point, শাহপরান, সিলেট\n📞 যোগাযোগ: ০১৫২১৭৬৫৭১৬\n\nআপনার প্রিয় পোষা প্রাণীর সুস্বাস্থ্য নিশ্চিত করতে নিয়মিত টিকাদান করুন।\n\nসুস্থ প্রাণী, সুখী জীবন! 🐾`;
 
       alerts.push({
         id: `vac-${row.vacId}`,
