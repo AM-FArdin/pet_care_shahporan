@@ -81,6 +81,17 @@ export const inventory = pgTable("inventory", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const prescriptionMedicines = pgTable("prescription_medicines", {
+  id: serial("id").primaryKey(),
+  inventoryId: integer("inventory_id").references(() => inventory.id, { onDelete: "set null" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  concentration: varchar("concentration", { length: 100 }),
+  doseMgPerKg: numeric("dose_mg_per_kg", { precision: 8, scale: 3 }),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const consultationSettings = pgTable("consultation_settings", {
   id: serial("id").primaryKey(),
   consultationFee: numeric("consultation_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
@@ -115,9 +126,15 @@ export const prescriptions = pgTable("prescriptions", {
   weightKg: numeric("weight_kg", { precision: 6, scale: 2 }).notNull(),
   doseMgPerKg: numeric("dose_mg_per_kg", { precision: 8, scale: 3 }).notNull(),
   calculatedDoseMg: numeric("calculated_dose_mg", { precision: 10, scale: 3 }).notNull(),
+  calculatedVolumeMl: numeric("calculated_volume_ml", { precision: 10, scale: 3 }),
+  prescriptionGroupId: varchar("prescription_group_id", { length: 36 }),
+  route: varchar("route", { length: 100 }),
   frequency: varchar("frequency", { length: 100 }).notNull(),
   duration: varchar("duration", { length: 100 }),
   instructions: text("instructions"),
+  diagnosis: text("diagnosis"),
+  advice: text("advice"),
+  followUpDate: date("follow_up_date"),
   sourceName: varchar("source_name", { length: 255 }).notNull(),
   sourceReference: varchar("source_reference", { length: 500 }),
   clinicianVerified: boolean("clinician_verified").default(false).notNull(),
