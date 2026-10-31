@@ -11,7 +11,7 @@ const navLinks = [
   { href: "/inventory", label: "Inventory", icon: Package },
   { href: "/sales", label: "Sales & Billing", icon: Receipt },
   { href: "/appointments", label: "Appointments", icon: CalendarDays },
-  { href: "/prescriptions", label: "E-Prescription", icon: FileText },
+  { href: "/prescriptions", label: "Dosage Calculator", icon: FileText },
 ];
 
 export default function Navbar() {

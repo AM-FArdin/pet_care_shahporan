@@ -1,58 +1,161 @@
 "use client";
-import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, Plus, UserPlus } from "lucide-react";
 
-type Pet = { id: number; name: string; species: string; ownerName: string; ownerId: number; weight: string | null };
-type Prescription = { id: number; petName: string; ownerName: string; medicineName: string; calculatedDoseMg: string; frequency: string; clinicianVerified: boolean };
-const emptyPatient = { ownerName: "", phone: "", petName: "", species: "Dog", breed: "", weightKg: "" };
+import { useEffect, useState } from "react";
+import { AlertTriangle, Calculator, Loader2, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
+
+type Pet = { id: number; name: string; species: string; ownerName: string; weight: string | null };
+type Medicine = { id: number; name: string; concentration: string | null; doseMgPerKg: string | null };
+type InventoryItem = { id: number; name: string; concentration: string | null; category: string };
+type MedicineRow = { id: number; medicineName: string; concentration: string; doseMgPerKg: string };
+
+const inputClass = "mt-1 w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500";
+const newRow = (): MedicineRow => ({ id: Date.now() + Math.random(), medicineName: "", concentration: "", doseMgPerKg: "" });
+
+function calculateDose(row: MedicineRow, weight: string) {
+  const doseMg = Number(weight) > 0 && Number(row.doseMgPerKg) > 0 ? Number(weight) * Number(row.doseMgPerKg) : 0;
+  const concentration = row.concentration.trim().replace(/,/g, ".");
+  const strengthMatch = concentration.match(/(\d+(?:\.\d+)?)\s*(mg|mcg)\b/i);
+  const liquidMatch = concentration.match(/(?:\/|per|in)\s*(\d+(?:\.\d+)?)?\s*(?:mL|ml|milliliters?)\b/i);
+  const numericConcentration = concentration.match(/^\s*(\d+(?:\.\d+)?)\s*$/);
+  if (!doseMg || (!strengthMatch && !numericConcentration)) return { doseMg, volumeMl: null as number | null };
+  const strength = strengthMatch
+    ? Number(strengthMatch[1]) * (strengthMatch[2].toLowerCase() === "mcg" ? 0.001 : 1)
+    : Number(numericConcentration?.[1]);
+  const denominatorMl = liquidMatch?.[1] ? Number(liquidMatch[1]) : 1;
+  const strengthMgPerMl = strength / denominatorMl;
+  return { doseMg, volumeMl: strengthMgPerMl > 0 ? doseMg / strengthMgPerMl : null };
+}
 
 export default function PrescriptionsPage() {
-  const [pets, setPets] = useState<Pet[]>([]), [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
-  const [saving, setSaving] = useState(false), [newPatientMode, setNewPatientMode] = useState(false), [newPatient, setNewPatient] = useState(emptyPatient);
-  const [form, setForm] = useState({ petId: "", medicineName: "", concentration: "", weightKg: "", doseMgPerKg: "", frequency: "", duration: "", instructions: "", sourceName: "", sourceReference: "", clinicianVerified: false });
-  const update = (key: string, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
-  const load = async () => { const [ownersRes, prescriptionsRes] = await Promise.all([fetch("/api/owners"), fetch("/api/prescriptions")]); const owners = await ownersRes.json(), saved = await prescriptionsRes.json(); if (Array.isArray(owners)) setPets(owners.flatMap((owner) => (owner.pets || []).map((pet: Pet) => ({ ...pet, ownerId: owner.id, ownerName: owner.name })))); if (Array.isArray(saved)) setPrescriptions(saved); };
-  useEffect(() => { const timer = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timer); }, []);
-  const selectedPet = pets.find((pet) => String(pet.id) === form.petId);
-  const profileWeight = selectedPet?.weight || "";
-  const effectiveWeight = newPatientMode ? newPatient.weightKg : profileWeight;
-  const calculated = Number(effectiveWeight) > 0 && Number(form.doseMgPerKg) > 0 ? Number(effectiveWeight) * Number(form.doseMgPerKg) : 0;
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault(); setSaving(true);
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [weightMode, setWeightMode] = useState<"profile" | "manual">("profile");
+  const [petId, setPetId] = useState("");
+  const [manualWeight, setManualWeight] = useState("");
+  const [rows, setRows] = useState<MedicineRow[]>([newRow()]);
+  const [query, setQuery] = useState<Record<number, string>>({});
+  const [searchOpen, setSearchOpen] = useState<Record<number, boolean>>({});
+  const [directoryForm, setDirectoryForm] = useState({ id: 0, inventoryId: "", name: "", concentration: "", doseMgPerKg: "" });
+  const [directoryFormOpen, setDirectoryFormOpen] = useState(false);
+  const [directorySaving, setDirectorySaving] = useState(false);
+  const [directoryOpen, setDirectoryOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
     try {
-      let petId = Number(form.petId);
-      if (newPatientMode) {
-        const profileResponse = await fetch("/api/owners/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newPatient) });
-        const profile = await profileResponse.json();
-        if (!profileResponse.ok) throw new Error(profile.error || "Failed to create profile.");
-        petId = profile.pet.id;
-      }
-      const response = await fetch("/api/prescriptions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, petId, weightKg: effectiveWeight }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to save prescription.");
-      setForm({ petId: "", medicineName: "", concentration: "", weightKg: "", doseMgPerKg: "", frequency: "", duration: "", instructions: "", sourceName: "", sourceReference: "", clinicianVerified: false }); setNewPatient(emptyPatient); setNewPatientMode(false); await load();
-    } catch (error) { alert(error instanceof Error ? error.message : "Failed to save prescription."); } finally { setSaving(false); }
+      const [ownersRes, medicinesRes, inventoryRes] = await Promise.all([
+        fetch("/api/owners"),
+        fetch("/api/prescription-medicines"),
+        fetch("/api/inventory"),
+      ]);
+      const owners = await ownersRes.json();
+      const catalog = await medicinesRes.json();
+      const stock = await inventoryRes.json();
+      if (Array.isArray(owners)) setPets(owners.flatMap((owner) => (owner.pets || []).map((pet: Pet) => ({ ...pet, ownerName: owner.name }))));
+      if (Array.isArray(catalog)) setMedicines(catalog);
+      if (Array.isArray(stock)) setInventory(stock.filter((item: InventoryItem) => ["Medicine", "Vaccine"].includes(item.category)));
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const selectedPet = pets.find((pet) => String(pet.id) === petId);
+  const weight = weightMode === "manual" ? manualWeight : selectedPet?.weight || "";
+  const updateRow = (id: number, patch: Partial<MedicineRow>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  const matching = (row: MedicineRow) => medicines.filter((medicine) => medicine.name.toLowerCase().includes((query[row.id] || "").toLowerCase())).slice(0, 6);
+  const chooseMedicine = (row: MedicineRow, medicine: Medicine) => {
+    updateRow(row.id, { medicineName: medicine.name, concentration: medicine.concentration || "", doseMgPerKg: medicine.doseMgPerKg || "" });
+    setQuery((current) => ({ ...current, [row.id]: medicine.name }));
+    setSearchOpen((current) => ({ ...current, [row.id]: false }));
+  };
+
+  const saveDirectoryMedicine = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setDirectorySaving(true);
+    try {
+      const response = await fetch(directoryForm.id ? `/api/prescription-medicines?id=${directoryForm.id}` : "/api/prescription-medicines", {
+        method: directoryForm.id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(directoryForm),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to save medicine.");
+      setDirectoryForm({ id: 0, inventoryId: "", name: "", concentration: "", doseMgPerKg: "" });
+      setDirectoryFormOpen(false);
+      await load();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to save medicine.");
+    } finally {
+      setDirectorySaving(false);
+    }
+  };
+
+  const removeDirectoryMedicine = async (medicine: Medicine) => {
+    if (!confirm(`Remove ${medicine.name} from the medicine directory? Inventory will not be changed.`)) return;
+    const response = await fetch(`/api/prescription-medicines?id=${medicine.id}`, { method: "DELETE" });
+    if (!response.ok) { const data = await response.json(); alert(data.error || "Failed to remove medicine."); return; }
+    setMedicines((current) => current.filter((item) => item.id !== medicine.id));
+  };
+
   return <div className="space-y-5">
-    <div><h1 className="text-2xl font-bold text-[#1a2f5e]">E-Prescription</h1><p className="text-sm text-gray-500 mt-1">Record clinician-verified medicine instructions with transparent weight-based calculations.</p></div>
-    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 flex gap-3"><AlertTriangle className="shrink-0 mt-0.5" size={18}/><span><strong>Clinical safety:</strong> this tool calculates weight × a dose you enter from your authorized veterinary source. It does not replace clinician review.</span></div>
-    <form onSubmit={submit} className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-      <div className="flex items-center justify-between"><h2 className="font-semibold text-gray-800">Prescription details</h2><button type="button" onClick={() => setNewPatientMode(!newPatientMode)} className="inline-flex items-center gap-1.5 text-sm text-teal-700 border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-50"><UserPlus size={15}/>{newPatientMode ? "Use existing profile" : "Unregistered patient / pet"}</button></div>
-      {newPatientMode ? <div className="grid md:grid-cols-3 gap-3">{([["ownerName","Customer name"],["phone","Phone"],["petName","Pet name"],["breed","Breed"],["weightKg","Weight (kg)"]] as const).map(([key,label]) => <label key={key} className="text-xs font-medium text-gray-700">{label}<input required={key !== "breed"} type={key === "weightKg" ? "number" : "text"} value={newPatient[key]} onChange={(e) => setNewPatient({ ...newPatient, [key]: e.target.value })} className="mt-1 w-full border rounded-lg p-2 text-sm"/></label>)}<label className="text-xs font-medium text-gray-700">Species<select value={newPatient.species} onChange={(e) => setNewPatient({ ...newPatient, species: e.target.value })} className="mt-1 w-full border rounded-lg p-2 text-sm"><option>Dog</option><option>Cat</option><option>Bird</option><option>Rabbit</option><option>Other</option></select></label></div> : <label className="text-xs font-medium text-gray-700">Pet<select required value={form.petId} onChange={(e) => update("petId", e.target.value)} className="mt-1 w-full border rounded-lg p-2 text-sm"><option value="">Select pet</option>{pets.map((pet) => <option key={pet.id} value={pet.id}>{pet.name} — {pet.ownerName}</option>)}</select></label>}
-      <div className="grid md:grid-cols-3 gap-4">
-        <label className="text-xs font-medium text-gray-700">Medicine name<input required value={form.medicineName} onChange={(e) => update("medicineName", e.target.value)} className="mt-1 w-full border rounded-lg p-2 text-sm"/></label>
-        <label className="text-xs font-medium text-gray-700">Product concentration<input value={form.concentration} onChange={(e) => update("concentration", e.target.value)} placeholder="e.g. 50 mg/mL" className="mt-1 w-full border rounded-lg p-2 text-sm"/></label>
-        {!newPatientMode && <label className="text-xs font-medium text-gray-700">Pet weight from profile (kg)<input required readOnly type="number" value={profileWeight} placeholder="No weight saved in profile" className="mt-1 w-full border rounded-lg p-2 text-sm bg-gray-50"/></label>}
-        <label className="text-xs font-medium text-gray-700">Verified dose (mg/kg)<input required type="number" min="0.001" step="0.001" value={form.doseMgPerKg} onChange={(e) => update("doseMgPerKg", e.target.value)} className="mt-1 w-full border rounded-lg p-2 text-sm"/></label>
-        <div className="rounded-lg bg-teal-50 p-3 text-sm text-teal-900"><span className="text-xs font-medium">Calculated dose</span><strong className="block text-lg">{calculated ? calculated.toFixed(3) : "—"} mg</strong></div>
-        <label className="text-xs font-medium text-gray-700">Frequency<input required value={form.frequency} onChange={(e) => update("frequency", e.target.value)} className="mt-1 w-full border rounded-lg p-2 text-sm"/></label>
-        <label className="text-xs font-medium text-gray-700">Duration<input value={form.duration} onChange={(e) => update("duration", e.target.value)} className="mt-1 w-full border rounded-lg p-2 text-sm"/></label>
-        <label className="text-xs font-medium text-gray-700">Authorized source name<input required value={form.sourceName} onChange={(e) => update("sourceName", e.target.value)} className="mt-1 w-full border rounded-lg p-2 text-sm"/></label>
+    <header>
+      <h1 className="text-2xl font-bold text-[#1a2f5e]">Dosage calculator</h1>
+      <p className="mt-1 text-sm text-gray-500">Calculate the total dose for one or more medicines. No prescription is saved or printed.</p>
+    </header>
+
+    <section className="space-y-5 rounded-xl border bg-white p-5">
+      <div className="flex items-center gap-2"><Calculator size={20} className="text-teal-700" /><h2 className="font-semibold text-gray-900">Patient weight</h2></div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => setWeightMode("profile")} className={`rounded-lg px-3 py-2 text-sm ${weightMode === "profile" ? "bg-teal-700 text-white" : "border text-gray-700"}`}><UserRound className="mr-1 inline" size={15} />Use pet profile</button>
+        <button type="button" onClick={() => setWeightMode("manual")} className={`rounded-lg px-3 py-2 text-sm ${weightMode === "manual" ? "bg-teal-700 text-white" : "border text-gray-700"}`}>Enter weight manually</button>
       </div>
-      <div className="grid md:grid-cols-2 gap-4"><label className="text-xs font-medium text-gray-700">Source reference<input value={form.sourceReference} onChange={(e) => update("sourceReference", e.target.value)} className="mt-1 w-full border rounded-lg p-2 text-sm"/></label><label className="text-xs font-medium text-gray-700">Instructions<textarea value={form.instructions} onChange={(e) => update("instructions", e.target.value)} className="mt-1 w-full border rounded-lg p-2 text-sm" rows={2}/></label></div>
-      <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.clinicianVerified} onChange={(e) => update("clinicianVerified", e.target.checked)} required/> I have verified the source, dose, concentration, route, and patient-specific safety.</label>
-      <button disabled={saving} className="inline-flex items-center gap-2 bg-[#1a7f7f] text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"><Plus size={16}/>{saving ? <Loader2 className="animate-spin" size={16}/> : "Save prescription"}</button>
-    </form>
-    <div className="space-y-3">{prescriptions.map((item) => <div key={item.id} className="bg-white border rounded-xl p-4 flex justify-between gap-4"><div><p className="font-semibold text-gray-800">{item.medicineName} — {item.petName}</p><p className="text-sm text-gray-500">{item.ownerName} · {item.calculatedDoseMg} mg · {item.frequency}</p></div>{item.clinicianVerified && <span className="text-xs text-emerald-700 flex items-center gap-1"><CheckCircle2 size={14}/> Verified</span>}</div>)}</div>
+      {weightMode === "profile" ? <label className="block max-w-xl text-xs font-medium">Pet profile
+        <select value={petId} onChange={(event) => setPetId(event.target.value)} className={inputClass}>
+          <option value="">Select a pet</option>
+          {pets.map((pet) => <option key={pet.id} value={pet.id}>{pet.name} — {pet.ownerName}{pet.weight ? ` (${pet.weight} kg)` : " (weight missing)"}</option>)}
+        </select>
+      </label> : <label className="block max-w-xs text-xs font-medium">Weight (kg)
+        <input type="number" min="0.001" step="0.01" value={manualWeight} onChange={(event) => setManualWeight(event.target.value)} placeholder="e.g. 12.5" className={inputClass} />
+      </label>}
+      {weightMode === "profile" && selectedPet && !selectedPet.weight && <p className="text-sm text-amber-700">This pet has no saved weight. Enter the weight manually to calculate.</p>}
+      {loading && <p className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="animate-spin" size={15} />Loading profiles and medicine directory...</p>}
+    </section>
+
+    <section className="space-y-4 rounded-xl border bg-white p-5">
+      <div className="flex items-center justify-between"><div><h2 className="font-semibold">Medicines to calculate</h2><p className="text-xs text-gray-500">Add as many medicines as needed. Dose is calculated as weight × dose rate.</p></div><button type="button" onClick={() => setRows((current) => [...current, newRow()])} className="inline-flex items-center gap-1 rounded-lg border border-teal-200 px-3 py-2 text-sm text-teal-700"><Plus size={15} />Add medicine</button></div>
+      <div className="flex gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><AlertTriangle size={18} className="mt-0.5 shrink-0" /><span>Use concentrations such as <b>50 mg/mL</b>, <b>100 mg/tablet</b>, or <b>250 mcg/mL</b>. mL is shown when the concentration is expressed per mL.</span></div>
+      <div className="space-y-3">
+        {rows.map((row, index) => {
+          const calculation = calculateDose(row, weight);
+          return <div key={row.id} className="rounded-lg border border-gray-200 p-4">
+            <div className="mb-3 flex items-center justify-between"><span className="text-sm font-semibold">Medicine {index + 1}</span>{rows.length > 1 && <button type="button" onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))} className="text-red-600" aria-label="Remove medicine"><Trash2 size={16} /></button>}</div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="relative"><label className="text-xs font-medium">Medicine</label><div className="relative"><Search size={14} className="absolute left-2.5 top-3.5 text-gray-400" /><input value={query[row.id] ?? row.medicineName} onChange={(event) => { setQuery({ ...query, [row.id]: event.target.value }); setSearchOpen({ ...searchOpen, [row.id]: true }); updateRow(row.id, { medicineName: event.target.value }); }} placeholder="Search medicine directory" className={`${inputClass} pl-8`} /></div>{searchOpen[row.id] && (query[row.id] || "").length > 0 && matching(row).length > 0 && <div className="absolute z-10 mt-1 w-full rounded border bg-white shadow">{matching(row).map((medicine) => <button type="button" key={medicine.id} onClick={() => chooseMedicine(row, medicine)} className="block w-full px-3 py-2 text-left text-sm hover:bg-teal-50">{medicine.name} <span className="text-xs text-gray-500">{medicine.concentration || "no concentration"}</span></button>)}</div>}</div>
+              <label className="text-xs font-medium">Concentration<input value={row.concentration} onChange={(event) => updateRow(row.id, { concentration: event.target.value })} placeholder="50 mg/mL" className={inputClass} /></label>
+              <label className="text-xs font-medium">Dose rate (mg/kg)<input type="number" min="0.001" step="0.001" value={row.doseMgPerKg} onChange={(event) => updateRow(row.id, { doseMgPerKg: event.target.value })} placeholder="e.g. 10" className={inputClass} /></label>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2"><div className="rounded-lg bg-teal-50 p-3"><span className="text-xs text-teal-800">Total dose</span><strong className="mt-1 block text-lg text-teal-950">{calculation.doseMg ? `${calculation.doseMg.toFixed(3)} mg` : "—"}</strong></div><div className="rounded-lg bg-blue-50 p-3"><span className="text-xs text-blue-800">Total volume</span><strong className="mt-1 block text-lg text-blue-950">{calculation.volumeMl !== null ? `${calculation.volumeMl.toFixed(3)} mL` : "—"}</strong><span className="mt-1 block text-xs text-blue-800">Based on {row.concentration || "selected concentration"}</span></div></div>
+          </div>;
+        })}
+      </div>
+    </section>
+
+    <div className="flex justify-end">
+      <button type="button" onClick={() => setDirectoryOpen((current) => !current)} className="rounded-lg border border-teal-200 px-3 py-2 text-sm font-medium text-teal-700">
+        {directoryOpen ? "Hide medicine directory" : "Show medicine directory"}
+      </button>
+    </div>
+    {directoryOpen && <section className="space-y-4 rounded-xl border bg-white p-5">
+      <div className="flex items-center justify-between"><div><h2 className="font-semibold">Medicine directory</h2><p className="text-xs text-gray-500">Manage reusable medicines and dose rates. Inventory is not changed here.</p></div><button type="button" onClick={() => { setDirectoryForm({ id: 0, inventoryId: "", name: "", concentration: "", doseMgPerKg: "" }); setDirectoryFormOpen(true); }} className="inline-flex items-center gap-1 rounded-lg bg-[#1a7f7f] px-3 py-2 text-sm text-white"><Plus size={15} />Add medicine</button></div>
+      <div className="grid gap-2 md:grid-cols-2">{medicines.map((medicine) => <div key={medicine.id} className="flex items-center justify-between rounded-lg border p-3 text-sm"><span><b>{medicine.name}</b><small className="ml-2 text-gray-500">{medicine.concentration || "No concentration"} · {medicine.doseMgPerKg ? `${medicine.doseMgPerKg} mg/kg` : "dose rate missing"}</small></span><span className="flex gap-2"><button type="button" onClick={() => { setDirectoryForm({ id: medicine.id, inventoryId: "", name: medicine.name, concentration: medicine.concentration || "", doseMgPerKg: medicine.doseMgPerKg || "" }); setDirectoryFormOpen(true); }} className="text-teal-700" aria-label={`Edit ${medicine.name}`}><Pencil size={15} /></button><button type="button" onClick={() => void removeDirectoryMedicine(medicine)} className="text-red-600" aria-label={`Remove ${medicine.name}`}><Trash2 size={15} /></button></span></div>)}</div>
+      {directoryFormOpen && <form onSubmit={saveDirectoryMedicine} className="grid gap-3 rounded-lg border border-teal-100 bg-teal-50 p-4 md:grid-cols-4"><label className="text-xs font-medium">Use inventory item<select value={directoryForm.inventoryId} onChange={(event) => { const selected = inventory.find((item) => String(item.id) === event.target.value); setDirectoryForm({ ...directoryForm, inventoryId: event.target.value, name: selected?.name || directoryForm.name, concentration: selected?.concentration || directoryForm.concentration }); }} className={inputClass}><option value="">Manual entry</option>{inventory.map((item) => <option key={item.id} value={item.id}>{item.name}{item.concentration ? ` — ${item.concentration}` : ""}</option>)}</select></label><label className="text-xs font-medium">Medicine name<input required={!directoryForm.inventoryId} value={directoryForm.name} onChange={(event) => setDirectoryForm({ ...directoryForm, inventoryId: "", name: event.target.value })} className={inputClass} /></label><label className="text-xs font-medium">Concentration<input value={directoryForm.concentration} onChange={(event) => setDirectoryForm({ ...directoryForm, concentration: event.target.value })} placeholder="50 mg/mL" className={inputClass} /></label><label className="text-xs font-medium">Dose rate (mg/kg)<input required type="number" min="0.001" step="0.001" value={directoryForm.doseMgPerKg} onChange={(event) => setDirectoryForm({ ...directoryForm, doseMgPerKg: event.target.value })} className={inputClass} /></label><div className="flex gap-2 md:col-span-4"><button type="submit" disabled={directorySaving} className="rounded-lg bg-[#1a7f7f] px-3 py-2 text-sm text-white">{directorySaving ? "Saving..." : directoryForm.id ? "Save changes" : "Add medicine"}</button><button type="button" onClick={() => setDirectoryFormOpen(false)} className="rounded-lg border px-3 py-2 text-sm">Cancel</button></div></form>}
+    </section>}
   </div>;
 }
