@@ -87,6 +87,7 @@ export const prescriptionMedicines = pgTable("prescription_medicines", {
   name: varchar("name", { length: 255 }).notNull(),
   concentration: varchar("concentration", { length: 100 }),
   doseMgPerKg: numeric("dose_mg_per_kg", { precision: 8, scale: 3 }),
+  doseUnit: varchar("dose_unit", { length: 10 }).notNull().default("mg/kg"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
     }
     let name = typeof body.name === "string" ? body.name.trim() : "";
     let concentration = typeof body.concentration === "string" ? body.concentration.trim() || null : null;
+    const doseUnit = body.doseUnit === "ml/kg" ? "ml/kg" : "mg/kg";
     const doseText = body.doseMgPerKg === undefined || body.doseMgPerKg === null ? "" : String(body.doseMgPerKg).trim();
     const doseMgPerKg = doseText ? Number(doseText) : null;
     if (doseText && !Number.isFinite(doseMgPerKg)) {
@@ -54,11 +55,11 @@ export async function POST(req: NextRequest) {
     }
     if (!name) return NextResponse.json({ error: "Medicine name is required." }, { status: 400 });
     try {
-      const [medicine] = await db.insert(prescriptionMedicines).values({ inventoryId, name, concentration, doseMgPerKg: doseMgPerKg?.toFixed(3) || null }).returning();
+      const [medicine] = await db.insert(prescriptionMedicines).values({ inventoryId, name, concentration: doseUnit === "ml/kg" ? null : concentration, doseMgPerKg: doseMgPerKg?.toFixed(3) || null, doseUnit }).returning();
       return NextResponse.json(medicine, { status: 201 });
     } catch {
       await ensureTablesExist();
-      const [medicine] = await db.insert(prescriptionMedicines).values({ inventoryId, name, concentration, doseMgPerKg: doseMgPerKg?.toFixed(3) || null }).returning();
+      const [medicine] = await db.insert(prescriptionMedicines).values({ inventoryId, name, concentration: doseUnit === "ml/kg" ? null : concentration, doseMgPerKg: doseMgPerKg?.toFixed(3) || null, doseUnit }).returning();
       return NextResponse.json(medicine, { status: 201 });
     }
   } catch (error) {
@@ -91,6 +92,7 @@ export async function PUT(req: NextRequest) {
       if (!name) return NextResponse.json({ error: "Medicine name is required." }, { status: 400 });
       const doseText = body.doseMgPerKg === undefined || body.doseMgPerKg === null ? "" : String(body.doseMgPerKg).trim();
       const doseMgPerKg = doseText ? Number(doseText) : null;
+      const doseUnit = body.doseUnit === "ml/kg" ? "ml/kg" : "mg/kg";
       if (doseText && !Number.isFinite(doseMgPerKg)) {
         return NextResponse.json({ error: "Dose rate must be a valid number." }, { status: 400 });
       }
@@ -98,7 +100,7 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: "Dose rate must be a positive number." }, { status: 400 });
       }
       const [medicine] = await db.update(prescriptionMedicines)
-        .set({ name, concentration: typeof body.concentration === "string" ? body.concentration.trim() || null : null, doseMgPerKg: doseMgPerKg?.toFixed(3) || null, updatedAt: new Date() })
+        .set({ name, concentration: doseUnit === "ml/kg" ? null : typeof body.concentration === "string" ? body.concentration.trim() || null : null, doseMgPerKg: doseMgPerKg?.toFixed(3) || null, doseUnit, updatedAt: new Date() })
         .where(eq(prescriptionMedicines.id, id)).returning();
       return NextResponse.json(medicine);
     } catch (error) {

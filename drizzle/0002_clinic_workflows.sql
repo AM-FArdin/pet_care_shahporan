@@ -73,8 +73,10 @@ CREATE TABLE IF NOT EXISTS prescription_medicines (
   name VARCHAR(255) NOT NULL,
   concentration VARCHAR(100),
   dose_mg_per_kg NUMERIC(8, 3),
+  dose_unit VARCHAR(10) NOT NULL DEFAULT 'mg/kg',
   is_active BOOLEAN DEFAULT TRUE NOT NULL,
   created_at TIMESTAMP DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
 ALTER TABLE prescription_medicines ADD COLUMN IF NOT EXISTS dose_mg_per_kg NUMERIC(8, 3);
+ALTER TABLE prescription_medicines ADD COLUMN IF NOT EXISTS dose_unit VARCHAR(10) NOT NULL DEFAULT 'mg/kg';
