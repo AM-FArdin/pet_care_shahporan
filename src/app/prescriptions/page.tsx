@@ -45,17 +45,20 @@ export default function PrescriptionsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [ownersRes, medicinesRes, inventoryRes] = await Promise.all([
-        fetch("/api/owners"),
+      const [petsRes, medicinesRes, inventoryRes] = await Promise.all([
+        fetch("/api/pets", { cache: "no-store" }),
         fetch("/api/prescription-medicines"),
-        fetch("/api/inventory"),
+        fetch("/api/inventory", { cache: "no-store" }),
       ]);
-      const owners = await ownersRes.json();
-      const catalog = await medicinesRes.json();
-      const stock = await inventoryRes.json();
-      if (Array.isArray(owners)) setPets(owners.flatMap((owner) => (owner.pets || []).map((pet: Pet) => ({ ...pet, ownerName: owner.name }))));
+      const [petData, catalog, stock] = await Promise.all([petsRes.json(), medicinesRes.json(), inventoryRes.json()]);
+      if (!petsRes.ok) throw new Error(petData.error || "Failed to load pet profiles.");
+      if (!medicinesRes.ok) throw new Error(catalog.error || "Failed to load medicine directory.");
+      if (!inventoryRes.ok) throw new Error(stock.error || "Failed to load inventory.");
+      if (Array.isArray(petData)) setPets(petData);
       if (Array.isArray(catalog)) setMedicines(catalog);
-      if (Array.isArray(stock)) setInventory(stock.filter((item: InventoryItem) => ["Medicine", "Vaccine"].includes(item.category)));
+      if (Array.isArray(stock)) setInventory(stock.filter((item: InventoryItem) => ["medicine", "vaccine"].includes(item.category.trim().toLowerCase())));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to load dosage calculator data.");
     } finally {
       setLoading(false);
     }
