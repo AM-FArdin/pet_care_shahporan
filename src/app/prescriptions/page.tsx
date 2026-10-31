@@ -6,13 +6,18 @@ import { AlertTriangle, Calculator, Loader2, Pencil, Plus, Search, Trash2, UserR
 type Pet = { id: number; name: string; species: string; ownerName: string; weight: string | null };
 type Medicine = { id: number; name: string; concentration: string | null; doseMgPerKg: string | null };
 type InventoryItem = { id: number; name: string; concentration: string | null; category: string };
-type MedicineRow = { id: number; medicineName: string; concentration: string; doseMgPerKg: string };
+type DoseUnit = "mg/kg" | "ml/kg";
+type MedicineRow = { id: number; medicineName: string; concentration: string; doseMgPerKg: string; doseUnit: DoseUnit };
 
 const inputClass = "mt-1 w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500";
-const newRow = (): MedicineRow => ({ id: Date.now() + Math.random(), medicineName: "", concentration: "", doseMgPerKg: "" });
+const newRow = (): MedicineRow => ({ id: Date.now() + Math.random(), medicineName: "", concentration: "", doseMgPerKg: "", doseUnit: "mg/kg" });
 
 function calculateDose(row: MedicineRow, weight: string) {
-  const doseMg = Number(weight) > 0 && Number(row.doseMgPerKg) > 0 ? Number(weight) * Number(row.doseMgPerKg) : 0;
+  const doseRate = Number(row.doseMgPerKg);
+  const doseMg = row.doseUnit === "mg/kg" && Number(weight) > 0 && doseRate > 0 ? Number(weight) * doseRate : 0;
+  if (row.doseUnit === "ml/kg") {
+    return { doseMg, volumeMl: Number(weight) > 0 && doseRate > 0 ? Number(weight) * doseRate : null };
+  }
   const concentration = row.concentration.trim().replace(/,/g, ".");
   const strengthMatch = concentration.match(/(\d+(?:\.\d+)?)\s*(mg|mcg)\b/i);
   const liquidMatch = concentration.match(/(?:\/|per|in)\s*(\d+(?:\.\d+)?)?\s*(?:mL|ml|milliliters?)\b/i);
@@ -74,7 +79,7 @@ export default function PrescriptionsPage() {
   const updateRow = (id: number, patch: Partial<MedicineRow>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   const matching = (row: MedicineRow) => medicines.filter((medicine) => medicine.name.toLowerCase().includes((query[row.id] || "").toLowerCase())).slice(0, 6);
   const chooseMedicine = (row: MedicineRow, medicine: Medicine) => {
-    updateRow(row.id, { medicineName: medicine.name, concentration: medicine.concentration || "", doseMgPerKg: medicine.doseMgPerKg || "" });
+    updateRow(row.id, { medicineName: medicine.name, concentration: medicine.concentration || "", doseMgPerKg: medicine.doseMgPerKg || "", doseUnit: "mg/kg" });
     setQuery((current) => ({ ...current, [row.id]: medicine.name }));
     setSearchOpen((current) => ({ ...current, [row.id]: false }));
   };
@@ -133,18 +138,26 @@ export default function PrescriptionsPage() {
 
     <section className="space-y-4 rounded-xl border bg-white p-5">
       <div className="flex items-center justify-between gap-3 max-sm:flex-col max-sm:items-start"><div><h2 className="font-semibold">Medicines to calculate</h2><p className="text-xs text-gray-500">Add as many medicines as needed. Dose is calculated as weight × dose rate.</p></div><button type="button" onClick={() => setRows((current) => [...current, newRow()])} className="inline-flex items-center gap-1 rounded-lg border border-teal-200 px-3 py-2 text-sm text-teal-700"><Plus size={15} />Add medicine</button></div>
-      <div className="flex gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><AlertTriangle size={18} className="mt-0.5 shrink-0" /><span>Use concentrations such as <b>50 mg/mL</b>, <b>100 mg/tablet</b>, or <b>250 mcg/mL</b>. mL is shown when the concentration is expressed per mL.</span></div>
+      <div className="flex gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><AlertTriangle size={18} className="mt-0.5 shrink-0" /><span>For mg/kg, use concentrations such as <b>50 mg/mL</b>, <b>100 mg/tablet</b>, or <b>250 mcg/mL</b>. Select ml/kg when the dose rate is already a volume per kilogram; concentration is not needed.</span></div>
       <div className="space-y-3">
         {rows.map((row, index) => {
           const calculation = calculateDose(row, weight);
           return <div key={row.id} className="rounded-lg border border-gray-200 p-4">
             <div className="mb-3 flex items-center justify-between"><span className="text-sm font-semibold">Medicine {index + 1}</span>{rows.length > 1 && <button type="button" onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))} className="text-red-600" aria-label="Remove medicine"><Trash2 size={16} /></button>}</div>
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className={`grid gap-3 ${row.doseUnit === "mg/kg" ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
               <div className="relative"><label className="text-xs font-medium">Medicine</label><div className="relative"><Search size={14} className="absolute left-2.5 top-3.5 text-gray-400" /><input value={query[row.id] ?? row.medicineName} onChange={(event) => { setQuery({ ...query, [row.id]: event.target.value }); setSearchOpen({ ...searchOpen, [row.id]: true }); updateRow(row.id, { medicineName: event.target.value }); }} placeholder="Search medicine directory" className={`${inputClass} pl-8`} /></div>{searchOpen[row.id] && (query[row.id] || "").length > 0 && matching(row).length > 0 && <div className="absolute z-10 mt-1 w-full rounded border bg-white shadow">{matching(row).map((medicine) => <button type="button" key={medicine.id} onClick={() => chooseMedicine(row, medicine)} className="block w-full px-3 py-2 text-left text-sm hover:bg-teal-50">{medicine.name} <span className="text-xs text-gray-500">{medicine.concentration || "no concentration"}</span></button>)}</div>}</div>
-              <label className="text-xs font-medium">Concentration<input value={row.concentration} onChange={(event) => updateRow(row.id, { concentration: event.target.value })} placeholder="50 mg/mL" className={inputClass} /></label>
-              <label className="text-xs font-medium">Dose rate (mg/kg)<input type="number" min="0.001" step="0.001" value={row.doseMgPerKg} onChange={(event) => updateRow(row.id, { doseMgPerKg: event.target.value })} placeholder="e.g. 10" className={inputClass} /></label>
+              {row.doseUnit === "mg/kg" && <label className="text-xs font-medium">Concentration<input value={row.concentration} onChange={(event) => updateRow(row.id, { concentration: event.target.value })} placeholder="50 mg/mL" className={inputClass} /></label>}
+              <label className="text-xs font-medium">Dose rate
+                <div className="mt-1 flex">
+                  <input type="number" min="0.001" step="0.001" value={row.doseMgPerKg} onChange={(event) => updateRow(row.id, { doseMgPerKg: event.target.value })} placeholder="e.g. 10" className={`${inputClass} mt-0 rounded-r-none`} />
+                  <select value={row.doseUnit} onChange={(event) => updateRow(row.id, { doseUnit: event.target.value as DoseUnit })} className="rounded-r-lg border border-l-0 border-gray-300 bg-gray-50 px-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+                    <option value="mg/kg">mg/kg</option>
+                    <option value="ml/kg">ml/kg</option>
+                  </select>
+                </div>
+              </label>
             </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2"><div className="rounded-lg bg-teal-50 p-3"><span className="text-xs text-teal-800">Total dose</span><strong className="mt-1 block text-lg text-teal-950">{calculation.doseMg ? `${calculation.doseMg.toFixed(3)} mg` : "—"}</strong></div><div className="rounded-lg bg-blue-50 p-3"><span className="text-xs text-blue-800">Total volume</span><strong className="mt-1 block text-lg text-blue-950">{calculation.volumeMl !== null ? `${calculation.volumeMl.toFixed(3)} mL` : "—"}</strong><span className="mt-1 block text-xs text-blue-800">Based on {row.concentration || "selected concentration"}</span></div></div>
+            <div className={`mt-3 grid gap-3 ${row.doseUnit === "mg/kg" ? "sm:grid-cols-2" : ""}`}>{row.doseUnit === "mg/kg" && <div className="rounded-lg bg-teal-50 p-3"><span className="text-xs text-teal-800">Total dose</span><strong className="mt-1 block text-lg text-teal-950">{calculation.doseMg ? `${calculation.doseMg.toFixed(3)} mg` : "—"}</strong></div>}<div className="rounded-lg bg-blue-50 p-3"><span className="text-xs text-blue-800">Total volume</span><strong className="mt-1 block text-lg text-blue-950">{calculation.volumeMl !== null ? `${calculation.volumeMl.toFixed(3)} mL` : "—"}</strong><span className="mt-1 block text-xs text-blue-800">{row.doseUnit === "ml/kg" ? "Calculated as weight × dose rate" : `Based on ${row.concentration || "selected concentration"}`}</span></div></div>
           </div>;
         })}
       </div>

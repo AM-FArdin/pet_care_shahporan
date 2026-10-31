@@ -53,9 +53,9 @@ export default function LowStockModal({ isOpen, onClose, onStockUpdated }: LowSt
   }, []);
 
   useEffect(() => {
-    if (isOpen) {
-      fetchLowStockItems();
-    }
+    if (!isOpen) return;
+    const timer = window.setTimeout(() => void fetchLowStockItems(), 0);
+    return () => window.clearTimeout(timer);
   }, [isOpen, fetchLowStockItems]);
 
   if (!isOpen) return null;
