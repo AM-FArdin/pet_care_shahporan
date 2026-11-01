@@ -85,6 +85,7 @@ export const prescriptionMedicines = pgTable("prescription_medicines", {
   id: serial("id").primaryKey(),
   inventoryId: integer("inventory_id").references(() => inventory.id, { onDelete: "set null" }),
   name: varchar("name", { length: 255 }).notNull(),
+  medicineClass: varchar("medicine_class", { length: 150 }),
   concentration: varchar("concentration", { length: 100 }),
   doseMgPerKg: numeric("dose_mg_per_kg", { precision: 8, scale: 3 }),
   doseUnit: varchar("dose_unit", { length: 10 }).notNull().default("mg/kg"),

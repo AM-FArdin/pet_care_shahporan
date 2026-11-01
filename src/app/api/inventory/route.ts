@@ -79,6 +79,8 @@ export async function POST(req: NextRequest) {
       expiryDate: body.expiryDate?.trim() || null,
       batchNumber: body.batchNumber?.trim() || null,
       location: body.location?.trim() || null,
+      concentration: body.concentration?.trim() || null,
+      medicineSource: body.medicineSource?.trim() || null,
       isActive: true,
     };
 

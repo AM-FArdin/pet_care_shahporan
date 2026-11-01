@@ -139,6 +139,7 @@ const CREATE_TABLES_SQL = [
     id SERIAL PRIMARY KEY,
     inventory_id INTEGER REFERENCES inventory(id) ON DELETE SET NULL,
     name VARCHAR(255) NOT NULL,
+    medicine_class VARCHAR(150),
     concentration VARCHAR(100),
     dose_mg_per_kg NUMERIC(8, 3),
     dose_unit VARCHAR(10) NOT NULL DEFAULT 'mg/kg',
@@ -148,6 +149,7 @@ const CREATE_TABLES_SQL = [
   )`,
   `ALTER TABLE prescription_medicines ADD COLUMN IF NOT EXISTS dose_mg_per_kg NUMERIC(8, 3)`,
   `ALTER TABLE prescription_medicines ADD COLUMN IF NOT EXISTS dose_unit VARCHAR(10) NOT NULL DEFAULT 'mg/kg'`,
+  `ALTER TABLE prescription_medicines ADD COLUMN IF NOT EXISTS medicine_class VARCHAR(150)`,
 
   `INSERT INTO clinic_services (name, fee) VALUES
     ('General Consultation Fee', 300),

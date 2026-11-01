@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Calculator, Loader2, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
+import { AlertTriangle, Calculator, Filter, Loader2, Pencil, Plus, RotateCcw, Search, Trash2, UserRound } from "lucide-react";
 
 type Pet = { id: number; name: string; species: string; ownerName: string; weight: string | null };
-type Medicine = { id: number; name: string; concentration: string | null; doseMgPerKg: string | null; doseUnit: DoseUnit };
+type Medicine = { id: number; name: string; medicineClass: string | null; concentration: string | null; doseMgPerKg: string | null; doseUnit: DoseUnit };
 type InventoryItem = { id: number; name: string; concentration: string | null; category: string };
 type DoseUnit = "mg/kg" | "ml/kg";
 type MedicineRow = { id: number; medicineName: string; concentration: string; doseMgPerKg: string; doseUnit: DoseUnit };
 
 const inputClass = "mt-1 w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500";
+const MEDICINE_CLASSES = ["Antibiotic", "Antifungal", "Anti-inflammatory", "Analgesic", "Antiparasitic", "Antiprotozoal", "Antiviral", "Corticosteroid", "Vaccine", "Gastrointestinal", "Cardiovascular", "Sedative / Anesthetic", "Vitamin / Supplement", "Other"];
 const newRow = (): MedicineRow => ({ id: Date.now() + Math.random(), medicineName: "", concentration: "", doseMgPerKg: "", doseUnit: "mg/kg" });
 
 function calculateDose(row: MedicineRow, weight: string) {
@@ -41,10 +42,11 @@ export default function PrescriptionsPage() {
   const [rows, setRows] = useState<MedicineRow[]>([newRow()]);
   const [query, setQuery] = useState<Record<number, string>>({});
   const [searchOpen, setSearchOpen] = useState<Record<number, boolean>>({});
-  const [directoryForm, setDirectoryForm] = useState({ id: 0, inventoryId: "", name: "", concentration: "", doseMgPerKg: "", doseUnit: "mg/kg" as DoseUnit });
+  const [directoryForm, setDirectoryForm] = useState({ id: 0, inventoryId: "", name: "", medicineClass: "", concentration: "", doseMgPerKg: "", doseUnit: "mg/kg" as DoseUnit });
   const [directoryFormOpen, setDirectoryFormOpen] = useState(false);
   const [directorySaving, setDirectorySaving] = useState(false);
   const [directoryOpen, setDirectoryOpen] = useState(false);
+  const [directoryClassFilter, setDirectoryClassFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -76,6 +78,10 @@ export default function PrescriptionsPage() {
 
   const selectedPet = pets.find((pet) => String(pet.id) === petId);
   const weight = weightMode === "manual" ? manualWeight : selectedPet?.weight || "";
+  const directoryClasses = Array.from(new Set(medicines.map((medicine) => medicine.medicineClass || "Unclassified"))).sort();
+  const filteredDirectoryMedicines = directoryClassFilter === "all"
+    ? medicines
+    : medicines.filter((medicine) => (medicine.medicineClass || "Unclassified") === directoryClassFilter);
   const updateRow = (id: number, patch: Partial<MedicineRow>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   const matching = (row: MedicineRow) => medicines.filter((medicine) => medicine.name.toLowerCase().includes((query[row.id] || "").toLowerCase())).slice(0, 6);
   const chooseMedicine = (row: MedicineRow, medicine: Medicine) => {
@@ -95,7 +101,7 @@ export default function PrescriptionsPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to save medicine.");
-      setDirectoryForm({ id: 0, inventoryId: "", name: "", concentration: "", doseMgPerKg: "", doseUnit: "mg/kg" });
+      setDirectoryForm({ id: 0, inventoryId: "", name: "", medicineClass: "", concentration: "", doseMgPerKg: "", doseUnit: "mg/kg" });
       setDirectoryFormOpen(false);
       await load();
     } catch (error) {
@@ -169,9 +175,26 @@ export default function PrescriptionsPage() {
       </button>
     </div>
     {directoryOpen && <section className="space-y-4 rounded-xl border bg-white p-5">
-      <div className="flex items-center justify-between gap-3 max-sm:flex-col max-sm:items-start"><div><h2 className="font-semibold">Medicine directory</h2><p className="text-xs text-gray-500">Manage reusable medicines and dose rates. Inventory is not changed here.</p></div><button type="button" onClick={() => { setDirectoryForm({ id: 0, inventoryId: "", name: "", concentration: "", doseMgPerKg: "", doseUnit: "mg/kg" }); setDirectoryFormOpen(true); }} className="inline-flex items-center gap-1 rounded-lg bg-[#1a7f7f] px-3 py-2 text-sm text-white"><Plus size={15} />Add medicine</button></div>
-      <div className="grid gap-2 md:grid-cols-2">{medicines.map((medicine) => <div key={medicine.id} className="flex items-center justify-between rounded-lg border p-3 text-sm"><span><b>{medicine.name}</b><small className="ml-2 text-gray-500">{medicine.concentration || "No concentration"} · {medicine.doseMgPerKg ? `${medicine.doseMgPerKg} ${medicine.doseUnit || "mg/kg"}` : "dose rate missing"}</small></span><span className="flex gap-2"><button type="button" onClick={() => { setDirectoryForm({ id: medicine.id, inventoryId: "", name: medicine.name, concentration: medicine.concentration || "", doseMgPerKg: medicine.doseMgPerKg || "", doseUnit: medicine.doseUnit || "mg/kg" }); setDirectoryFormOpen(true); }} className="text-teal-700" aria-label={`Edit ${medicine.name}`}><Pencil size={15} /></button><button type="button" onClick={() => void removeDirectoryMedicine(medicine)} className="text-red-600" aria-label={`Remove ${medicine.name}`}><Trash2 size={15} /></button></span></div>)}</div>
-      {directoryFormOpen && <form onSubmit={saveDirectoryMedicine} className="grid gap-3 rounded-lg border border-teal-100 bg-teal-50 p-4 md:grid-cols-4"><label className="text-xs font-medium">Use inventory item<select value={directoryForm.inventoryId} onChange={(event) => { const selected = inventory.find((item) => String(item.id) === event.target.value); setDirectoryForm({ ...directoryForm, inventoryId: event.target.value, name: selected?.name || directoryForm.name, concentration: selected?.concentration || directoryForm.concentration }); }} className={inputClass}><option value="">Manual entry</option>{inventory.map((item) => <option key={item.id} value={item.id}>{item.name}{item.concentration ? ` — ${item.concentration}` : ""}</option>)}</select></label><label className="text-xs font-medium">Medicine name<input required={!directoryForm.inventoryId} value={directoryForm.name} onChange={(event) => setDirectoryForm({ ...directoryForm, inventoryId: "", name: event.target.value })} className={inputClass} /></label>{directoryForm.doseUnit === "mg/kg" && <label className="text-xs font-medium">Concentration<input value={directoryForm.concentration} onChange={(event) => setDirectoryForm({ ...directoryForm, concentration: event.target.value })} placeholder="50 mg/mL" className={inputClass} /></label>}<label className="text-xs font-medium">Dose rate<div className="mt-1 flex"><input required type="number" min="0.001" step="0.001" value={directoryForm.doseMgPerKg} onChange={(event) => setDirectoryForm({ ...directoryForm, doseMgPerKg: event.target.value })} className={`${inputClass} mt-0 rounded-r-none`} /><select value={directoryForm.doseUnit} onChange={(event) => setDirectoryForm({ ...directoryForm, doseUnit: event.target.value as DoseUnit, concentration: event.target.value === "ml/kg" ? "" : directoryForm.concentration })} className="rounded-r-lg border border-l-0 border-gray-300 bg-gray-50 px-2 text-sm"><option value="mg/kg">mg/kg</option><option value="ml/kg">ml/kg</option></select></div></label><div className="flex gap-2 md:col-span-4"><button type="submit" disabled={directorySaving} className="rounded-lg bg-[#1a7f7f] px-3 py-2 text-sm text-white">{directorySaving ? "Saving..." : directoryForm.id ? "Save changes" : "Add medicine"}</button><button type="button" onClick={() => setDirectoryFormOpen(false)} className="rounded-lg border px-3 py-2 text-sm">Cancel</button></div></form>}
+      <div className="flex items-center justify-between gap-3 max-sm:flex-col max-sm:items-start"><div><h2 className="font-semibold">Medicine directory</h2><p className="text-xs text-gray-500">Manage reusable medicines and dose rates. Inventory is not changed here.</p></div><button type="button" onClick={() => { setDirectoryForm({ id: 0, inventoryId: "", name: "", medicineClass: "", concentration: "", doseMgPerKg: "", doseUnit: "mg/kg" }); setDirectoryFormOpen(true); }} className="inline-flex items-center gap-1 rounded-lg bg-[#1a7f7f] px-3 py-2 text-sm text-white"><Plus size={15} />Add medicine</button></div>
+      <div className="rounded-xl border-2 border-teal-200 bg-teal-50 p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="rounded-lg bg-teal-700 p-2 text-white"><Filter size={17} /></span>
+            <div><p className="font-semibold text-teal-950">Filter by medicine class</p><p className="text-xs text-teal-800">{filteredDirectoryMedicines.length} of {medicines.length} medicines shown</p></div>
+          </div>
+          {directoryClassFilter !== "all" && <button type="button" onClick={() => setDirectoryClassFilter("all")} className="inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-white px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-100"><RotateCcw size={14} />Show all</button>}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={() => setDirectoryClassFilter("all")} className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${directoryClassFilter === "all" ? "border-teal-700 bg-teal-700 text-white" : "border-teal-200 bg-white text-teal-800 hover:border-teal-500 hover:bg-teal-100"}`}>All classes <span className="ml-1 opacity-75">({medicines.length})</span></button>
+          {directoryClasses.map((medicineClass) => {
+            const count = medicines.filter((medicine) => (medicine.medicineClass || "Unclassified") === medicineClass).length;
+            return <button type="button" key={medicineClass} onClick={() => setDirectoryClassFilter(medicineClass)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${directoryClassFilter === medicineClass ? "border-teal-700 bg-teal-700 text-white" : "border-teal-200 bg-white text-teal-800 hover:border-teal-500 hover:bg-teal-100"}`}>{medicineClass} <span className="ml-1 opacity-75">({count})</span></button>;
+          })}
+        </div>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">{filteredDirectoryMedicines.map((medicine) => <div key={medicine.id} className="flex items-center justify-between rounded-lg border p-3 text-sm"><span><b>{medicine.name}</b><small className="ml-2 text-gray-500"><span className="font-medium text-teal-700">{medicine.medicineClass || "Unclassified"}</span> · {medicine.concentration || "No concentration"} · {medicine.doseMgPerKg ? `${medicine.doseMgPerKg} ${medicine.doseUnit || "mg/kg"}` : "dose rate missing"}</small></span><span className="flex gap-2"><button type="button" onClick={() => { setDirectoryForm({ id: medicine.id, inventoryId: "", name: medicine.name, medicineClass: medicine.medicineClass || "", concentration: medicine.concentration || "", doseMgPerKg: medicine.doseMgPerKg || "", doseUnit: medicine.doseUnit || "mg/kg" }); setDirectoryFormOpen(true); }} className="text-teal-700" aria-label={`Edit ${medicine.name}`}><Pencil size={15} /></button><button type="button" onClick={() => void removeDirectoryMedicine(medicine)} className="text-red-600" aria-label={`Remove ${medicine.name}`}><Trash2 size={15} /></button></span></div>)}</div>
+      {filteredDirectoryMedicines.length === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-gray-500">No medicines found in this class.</p>}
+      {directoryFormOpen && <form onSubmit={saveDirectoryMedicine} className="grid gap-3 rounded-lg border border-teal-100 bg-teal-50 p-4 md:grid-cols-4"><label className="text-xs font-medium">Use inventory item<select value={directoryForm.inventoryId} onChange={(event) => { const selected = inventory.find((item) => String(item.id) === event.target.value); setDirectoryForm({ ...directoryForm, inventoryId: event.target.value, name: selected?.name || directoryForm.name, concentration: selected?.concentration || directoryForm.concentration }); }} className={inputClass}><option value="">Manual entry</option>{inventory.map((item) => <option key={item.id} value={item.id}>{item.name}{item.concentration ? ` — ${item.concentration}` : ""}</option>)}</select></label><label className="text-xs font-medium">Medicine name<input required={!directoryForm.inventoryId} value={directoryForm.name} onChange={(event) => setDirectoryForm({ ...directoryForm, inventoryId: "", name: event.target.value })} className={inputClass} /></label><label className="text-xs font-medium">Medicine class<select value={MEDICINE_CLASSES.includes(directoryForm.medicineClass) ? directoryForm.medicineClass : directoryForm.medicineClass ? "custom" : ""} onChange={(event) => setDirectoryForm({ ...directoryForm, medicineClass: event.target.value === "custom" ? "" : event.target.value })} className={inputClass}><option value="">Select a class</option>{MEDICINE_CLASSES.map((medicineClass) => <option key={medicineClass} value={medicineClass}>{medicineClass}</option>)}<option value="custom">Custom class...</option></select>{(!MEDICINE_CLASSES.includes(directoryForm.medicineClass) || directoryForm.medicineClass === "") && <input required value={MEDICINE_CLASSES.includes(directoryForm.medicineClass) ? "" : directoryForm.medicineClass} onChange={(event) => setDirectoryForm({ ...directoryForm, medicineClass: event.target.value })} placeholder="Enter custom class" className={inputClass} />}</label>{directoryForm.doseUnit === "mg/kg" && <label className="text-xs font-medium">Concentration<input value={directoryForm.concentration} onChange={(event) => setDirectoryForm({ ...directoryForm, concentration: event.target.value })} placeholder="50 mg/mL" className={inputClass} /></label>}<label className="text-xs font-medium">Dose rate<div className="mt-1 flex"><input required type="number" min="0.001" step="0.001" value={directoryForm.doseMgPerKg} onChange={(event) => setDirectoryForm({ ...directoryForm, doseMgPerKg: event.target.value })} className={`${inputClass} mt-0 rounded-r-none`} /><select value={directoryForm.doseUnit} onChange={(event) => setDirectoryForm({ ...directoryForm, doseUnit: event.target.value as DoseUnit, concentration: event.target.value === "ml/kg" ? "" : directoryForm.concentration })} className="rounded-r-lg border border-l-0 border-gray-300 bg-gray-50 px-2 text-sm"><option value="mg/kg">mg/kg</option><option value="ml/kg">ml/kg</option></select></div></label><div className="flex gap-2 md:col-span-4"><button type="submit" disabled={directorySaving} className="rounded-lg bg-[#1a7f7f] px-3 py-2 text-sm text-white">{directorySaving ? "Saving..." : directoryForm.id ? "Save changes" : "Add medicine"}</button><button type="button" onClick={() => setDirectoryFormOpen(false)} className="rounded-lg border px-3 py-2 text-sm">Cancel</button></div></form>}
     </section>}
   </div>;
 }
