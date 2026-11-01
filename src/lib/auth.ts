@@ -8,13 +8,9 @@ export const COOKIE_NAME = "admin_session";
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 export function getAdminCredentials() {
-  if (process.env.NODE_ENV === "production" && (!process.env.ADMIN_PASSWORD?.trim() || !process.env.ADMIN_SESSION_SECRET?.trim())) {
-    throw new Error("ADMIN_PASSWORD and ADMIN_SESSION_SECRET must be configured in production.");
-  }
-
   return {
     username: process.env.ADMIN_USERNAME?.trim() || DEFAULT_ADMIN_USERNAME,
-    password: process.env.ADMIN_PASSWORD?.trim() || (process.env.NODE_ENV === "production" ? "" : DEFAULT_ADMIN_PASSWORD),
+    password: process.env.ADMIN_PASSWORD?.trim() || DEFAULT_ADMIN_PASSWORD,
   };
 }
 
@@ -85,8 +81,7 @@ export interface SessionPayload {
 }
 
 export async function createSessionToken(username: string): Promise<string> {
-  const secret = process.env.ADMIN_SESSION_SECRET?.trim() || (process.env.NODE_ENV === "production" ? "" : DEFAULT_SECRET);
-  if (!secret) throw new Error("ADMIN_SESSION_SECRET must be configured in production.");
+  const secret = process.env.ADMIN_SESSION_SECRET || DEFAULT_SECRET;
   const key = await getCryptoKey(secret);
   
   const payload: SessionPayload = {
@@ -110,8 +105,7 @@ export async function verifySessionToken(token: string | undefined | null): Prom
 
   const [payloadEncoded, signatureEncoded] = parts;
   try {
-    const secret = process.env.ADMIN_SESSION_SECRET?.trim() || (process.env.NODE_ENV === "production" ? "" : DEFAULT_SECRET);
-    if (!secret) return null;
+    const secret = process.env.ADMIN_SESSION_SECRET || DEFAULT_SECRET;
     const key = await getCryptoKey(secret);
 
     // Decode signature
