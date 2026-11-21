@@ -1,5 +1,6 @@
 import { db, isDbConfigured } from "@/lib/db";
-import { pets, owners, vaccinations, medicalRecords } from "@/lib/db/schema";
+import { pets, owners, vaccinations, medicalRecords, reminderCompletions } from "@/lib/db/schema";
+import { ensureTablesExist } from "@/lib/db/init";
 import { eq, isNotNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
@@ -95,6 +96,18 @@ export async function GET() {
 
   try {
     const alerts: DueDateAlertItem[] = [];
+    let completedKeys = new Set<string>();
+    try {
+      const completions = await db
+        .select({
+          sourceType: reminderCompletions.sourceType,
+          sourceId: reminderCompletions.sourceId,
+        })
+        .from(reminderCompletions);
+      completedKeys = new Set(completions.map((item) => `${item.sourceType}:${item.sourceId}`));
+    } catch {
+      await ensureTablesExist();
+    }
 
     // 1. Fetch Vaccinations with due dates for active pets
     const vaccineRows = await db
@@ -120,6 +133,7 @@ export async function GET() {
 
     for (const row of vaccineRows) {
       if (!row.dueDate) continue;
+      if (completedKeys.has(`vaccination:${row.vacId}`)) continue;
       const daysDiff = calculateDaysDiff(row.dueDate);
       const urgency = getUrgency(daysDiff);
 
@@ -175,6 +189,7 @@ export async function GET() {
 
     for (const row of medRows) {
       if (!row.nextVisitDate) continue;
+      if (completedKeys.has(`medical_record:${row.medId}`)) continue;
       const daysDiff = calculateDaysDiff(row.nextVisitDate);
       const urgency = getUrgency(daysDiff);
 

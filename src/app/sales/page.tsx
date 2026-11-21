@@ -105,6 +105,8 @@ export default function SalesPage() {
   const [salesList, setSalesList] = useState<SaleRecord[]>([]);
   const [summary, setSummary] = useState({
     totalRevenue: "0.00",
+    petFoodAccessoriesRevenue: "0.00",
+    medicalServicesDrugsRevenue: "0.00",
     totalSalesCount: 0,
     totalDiscounts: "0.00",
     todayRevenue: "0.00",
@@ -159,6 +161,11 @@ export default function SalesPage() {
   const [paidAmount, setPaidAmount] = useState<string>("");
   const [doctorOrStaff, setDoctorOrStaff] = useState(DOCTORS[0]);
   const [notes, setNotes] = useState("");
+  const [barcodeInput, setBarcodeInput] = useState("");
+  const [inventorySearch, setInventorySearch] = useState("");
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [inventoryPickerOpen, setInventoryPickerOpen] = useState(false);
+  const [servicePickerOpen, setServicePickerOpen] = useState(false);
 
   const fetchSales = useCallback(async () => {
     setLoading(true);
@@ -437,6 +444,10 @@ export default function SalesPage() {
     if (!invIdStr) return;
     const inv = inventoryItems.find((i) => i.id === parseInt(invIdStr));
     if (!inv) return;
+    if (inv.quantity <= 0) {
+      alert(`${inv.name} is out of stock.`);
+      return;
+    }
     setSaleItemsList((prev) => [
       ...prev,
       {
@@ -448,6 +459,19 @@ export default function SalesPage() {
         discountPercentage: 0,
       },
     ]);
+  };
+
+  const scanBarcode = () => {
+    const code = barcodeInput.trim();
+    if (!code) return;
+    const inv = inventoryItems.find((item) => (item.barcode || "").trim() === code);
+    if (!inv) {
+      alert(`No inventory item is assigned to barcode "${code}".`);
+      setBarcodeInput("");
+      return;
+    }
+    addInventoryProduct(String(inv.id));
+    setBarcodeInput("");
   };
 
   const addService = (serviceName: string) => {
@@ -696,7 +720,7 @@ export default function SalesPage() {
       </div>
 
       {/* Real-Time Revenue Performance Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-7 gap-3 sm:gap-4">
         {/* Net Revenue Hero Card */}
         <div className="bg-gradient-to-br from-[#1a2f5e] to-[#243d78] text-white p-4 sm:p-5 rounded-2xl shadow-sm col-span-2 sm:col-span-1">
           <div className="flex items-center justify-between text-teal-200 mb-2">
@@ -711,14 +735,34 @@ export default function SalesPage() {
           </p>
         </div>
 
-        {/* Gross Sales */}
+        {/* Pet food, litter & accessories */}
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-sm">
           <div className="flex items-center justify-between text-emerald-600 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Gross Sales</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Pet Food &amp; Accessories</span>
             <TrendingUp size={18} />
           </div>
-          <p className="text-xl sm:text-2xl font-bold text-gray-800">৳{periodGrossSales.toFixed(2)}</p>
-          <p className="text-xs text-gray-400 mt-1">{filteredSales.length} Invoices</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-800">৳{summary.petFoodAccessoriesRevenue}</p>
+          <p className="text-xs text-gray-400 mt-1">All-time retail sales</p>
+        </div>
+
+        {/* Medical services & drugs */}
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-sm">
+          <div className="flex items-center justify-between text-blue-600 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Medical &amp; Drugs</span>
+            <Receipt size={18} />
+          </div>
+          <p className="text-xl sm:text-2xl font-bold text-gray-800">৳{summary.medicalServicesDrugsRevenue}</p>
+          <p className="text-xs text-gray-400 mt-1">All-time medical sales</p>
+        </div>
+
+        {/* Total sales */}
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-sm">
+          <div className="flex items-center justify-between text-indigo-600 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total Sales</span>
+            <ShoppingBag size={18} />
+          </div>
+          <p className="text-xl sm:text-2xl font-bold text-gray-800">৳{summary.totalRevenue}</p>
+          <p className="text-xs text-gray-400 mt-1">All-time combined sales</p>
         </div>
 
         {/* Total Discounts */}
@@ -1193,42 +1237,124 @@ export default function SalesPage() {
 
               {/* Items / Services Selector */}
               <div>
-                <div className="flex items-center justify-between mb-3">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[#1a2f5e] flex items-center gap-1.5">
                     <ShoppingBag size={14} /> Billed Items & Services
                   </h3>
-                  <div className="flex gap-2">
-                    {/* Add from inventory */}
-                    <select
-                      onChange={(e) => {
-                        addInventoryProduct(e.target.value);
-                        e.target.value = "";
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      value={barcodeInput}
+                      onChange={(event) => setBarcodeInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          scanBarcode();
+                        }
                       }}
-                      className="text-xs border border-teal-300 bg-teal-50 text-teal-800 rounded-lg px-2.5 py-1.5 font-medium cursor-pointer"
-                    >
-                      <option value="">+ Add From Inventory...</option>
-                      {inventoryItems.map((inv) => (
-                        <option key={inv.id} value={inv.id}>
-                          {inv.name} (Stock: {inv.quantity} {inv.unit} | ৳{inv.sellingPrice})
-                        </option>
-                      ))}
-                    </select>
+                      placeholder="Scan barcode"
+                      className="w-28 sm:w-36 text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      aria-label="Scan barcode"
+                    />
 
-                    {/* Add service */}
-                    <select
-                      onChange={(e) => {
-                        addService(e.target.value);
-                        e.target.value = "";
-                      }}
-                      className="text-xs border border-blue-300 bg-blue-50 text-blue-800 rounded-lg px-2.5 py-1.5 font-medium cursor-pointer"
-                    >
-                      <option value="">+ Add Clinic Service...</option>
-                      {clinicServices.map((s) => (
-                        <option key={s.name} value={s.name}>
-                          {s.name} (৳{s.fee})
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInventoryPickerOpen((open) => !open);
+                          setServicePickerOpen(false);
+                          setInventorySearch("");
+                        }}
+                        className="text-xs border border-teal-300 bg-teal-50 text-teal-800 rounded-lg px-2.5 py-1.5 font-medium hover:bg-teal-100"
+                      >
+                        + Add From Inventory...
+                      </button>
+                      {inventoryPickerOpen && (
+                        <div className="absolute right-0 z-30 mt-1 w-[280px] max-w-[calc(100vw-2rem)] rounded-xl border border-teal-200 bg-white p-2 shadow-xl">
+                          <div className="relative">
+                            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-teal-600" />
+                            <input
+                              autoFocus
+                              value={inventorySearch}
+                              onChange={(event) => setInventorySearch(event.target.value)}
+                              placeholder="Search inventory..."
+                              className="w-full rounded-lg border border-gray-300 py-2 pl-8 pr-3 text-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                            />
+                          </div>
+                          <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+                            {inventoryItems
+                              .filter((inv) => {
+                                const query = inventorySearch.trim().toLowerCase();
+                                return !query || inv.name.toLowerCase().includes(query) || inv.category.toLowerCase().includes(query) || (inv.barcode || "").toLowerCase().includes(query);
+                              })
+                              .slice(0, 20)
+                              .map((inv) => (
+                                <button
+                                  type="button"
+                                  key={inv.id}
+                                  onClick={() => {
+                                    addInventoryProduct(String(inv.id));
+                                    setInventoryPickerOpen(false);
+                                  }}
+                                  disabled={inv.quantity <= 0}
+                                  className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <span className="min-w-0 truncate font-medium text-teal-900">{inv.name}</span>
+                                  <span className="shrink-0 text-[10px] text-gray-500">{inv.quantity} · ৳{inv.sellingPrice || "0.00"}</span>
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setServicePickerOpen((open) => !open);
+                          setInventoryPickerOpen(false);
+                          setServiceSearch("");
+                        }}
+                        className="text-xs border border-blue-300 bg-blue-50 text-blue-800 rounded-lg px-2.5 py-1.5 font-medium hover:bg-blue-100"
+                      >
+                        + Add Clinic Service...
+                      </button>
+                      {servicePickerOpen && (
+                        <div className="absolute right-0 z-30 mt-1 w-[280px] max-w-[calc(100vw-2rem)] rounded-xl border border-blue-200 bg-white p-2 shadow-xl">
+                          <div className="relative">
+                            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-blue-600" />
+                            <input
+                              autoFocus
+                              value={serviceSearch}
+                              onChange={(event) => setServiceSearch(event.target.value)}
+                              placeholder="Search clinic services..."
+                              className="w-full rounded-lg border border-gray-300 py-2 pl-8 pr-3 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+                            {clinicServices
+                              .filter((service) => {
+                                const query = serviceSearch.trim().toLowerCase();
+                                return !query || service.name.toLowerCase().includes(query);
+                              })
+                              .map((service) => (
+                                <button
+                                  type="button"
+                                  key={service.id}
+                                  onClick={() => {
+                                    addService(service.name);
+                                    setServicePickerOpen(false);
+                                  }}
+                                  className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-blue-50"
+                                >
+                                  <span className="min-w-0 truncate font-medium text-blue-900">{service.name}</span>
+                                  <span className="shrink-0 text-[10px] font-semibold text-blue-700">৳{service.fee}</span>
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 

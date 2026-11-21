@@ -73,6 +73,7 @@ const CREATE_TABLES_SQL = [
     location VARCHAR(100),
     concentration VARCHAR(100),
     medicine_source VARCHAR(500),
+    barcode VARCHAR(100),
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMP DEFAULT NOW() NOT NULL
@@ -135,6 +136,7 @@ const CREATE_TABLES_SQL = [
 
   `ALTER TABLE inventory ADD COLUMN IF NOT EXISTS concentration VARCHAR(100)`,
   `ALTER TABLE inventory ADD COLUMN IF NOT EXISTS medicine_source VARCHAR(500)`,
+  `ALTER TABLE inventory ADD COLUMN IF NOT EXISTS barcode VARCHAR(100)`,
   `CREATE TABLE IF NOT EXISTS prescription_medicines (
     id SERIAL PRIMARY KEY,
     inventory_id INTEGER REFERENCES inventory(id) ON DELETE SET NULL,
@@ -160,6 +162,15 @@ const CREATE_TABLES_SQL = [
     ('Diagnostic Test Fee (Lab)', 500),
     ('Surgery / Procedure Fee', 1500)
     ON CONFLICT (name) DO NOTHING`,
+
+  `CREATE TABLE IF NOT EXISTS reminder_completions (
+    id SERIAL PRIMARY KEY,
+    source_type VARCHAR(30) NOT NULL,
+    source_id INTEGER NOT NULL,
+    completed_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    notes TEXT,
+    UNIQUE (source_type, source_id)
+  )`,
 
   `CREATE TABLE IF NOT EXISTS sales (
     id SERIAL PRIMARY KEY,
@@ -214,49 +225,62 @@ const CREATE_TABLES_SQL = [
   `ALTER TABLE sales ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(100)`,
   `ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC(5, 2) DEFAULT 0.00 NOT NULL`,
   `ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10, 2) DEFAULT 0.00 NOT NULL`,
+  `WITH ranked_inventory AS (
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY lower(btrim(name)), lower(btrim(category)) ORDER BY id) AS duplicate_rank
+    FROM inventory
+    WHERE is_active = TRUE
+  )
+  UPDATE inventory SET is_active = FALSE, updated_at = NOW()
+  WHERE id IN (SELECT id FROM ranked_inventory WHERE duplicate_rank > 1)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS inventory_unique_name_category_active
+   ON inventory (lower(btrim(name)), lower(btrim(category)))
+   WHERE is_active = TRUE`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS inventory_unique_barcode_active
+   ON inventory (btrim(barcode))
+   WHERE is_active = TRUE AND barcode IS NOT NULL AND btrim(barcode) <> ''`,
 ];
 
 // Seed items run one-by-one to avoid multi-statement errors
 const SEED_INVENTORY_SQL = [
   `INSERT INTO inventory (name, category, quantity, unit, minimum_stock, selling_price)
-   VALUES ('FVRCP Vaccine', 'Vaccine', 20, 'doses', 10, 500)
-   ON CONFLICT DO NOTHING`,
+   SELECT 'FVRCP Vaccine', 'Vaccine', 20, 'doses', 10, 500
+   WHERE NOT EXISTS (SELECT 1 FROM inventory WHERE lower(btrim(name)) = 'fvrcp vaccine' AND lower(btrim(category)) = 'vaccine')`,
 
   `INSERT INTO inventory (name, category, quantity, unit, minimum_stock, selling_price)
-   VALUES ('Rabies Vaccine', 'Vaccine', 30, 'doses', 15, 600)
-   ON CONFLICT DO NOTHING`,
+   SELECT 'Rabies Vaccine', 'Vaccine', 30, 'doses', 15, 600
+   WHERE NOT EXISTS (SELECT 1 FROM inventory WHERE lower(btrim(name)) = 'rabies vaccine' AND lower(btrim(category)) = 'vaccine')`,
 
   `INSERT INTO inventory (name, category, quantity, unit, minimum_stock, selling_price)
-   VALUES ('DHPPL Vaccine', 'Vaccine', 25, 'doses', 10, 550)
-   ON CONFLICT DO NOTHING`,
+   SELECT 'DHPPL Vaccine', 'Vaccine', 25, 'doses', 10, 550
+   WHERE NOT EXISTS (SELECT 1 FROM inventory WHERE lower(btrim(name)) = 'dhppl vaccine' AND lower(btrim(category)) = 'vaccine')`,
 
   `INSERT INTO inventory (name, category, quantity, unit, minimum_stock, selling_price)
-   VALUES ('Deworming Tablets (Cat)', 'Medicine', 100, 'tablets', 20, 50)
-   ON CONFLICT DO NOTHING`,
+   SELECT 'Deworming Tablets (Cat)', 'Medicine', 100, 'tablets', 20, 50
+   WHERE NOT EXISTS (SELECT 1 FROM inventory WHERE lower(btrim(name)) = 'deworming tablets (cat)' AND lower(btrim(category)) = 'medicine')`,
 
   `INSERT INTO inventory (name, category, quantity, unit, minimum_stock, selling_price)
-   VALUES ('Deworming Tablets (Dog)', 'Medicine', 100, 'tablets', 20, 60)
-   ON CONFLICT DO NOTHING`,
+   SELECT 'Deworming Tablets (Dog)', 'Medicine', 100, 'tablets', 20, 60
+   WHERE NOT EXISTS (SELECT 1 FROM inventory WHERE lower(btrim(name)) = 'deworming tablets (dog)' AND lower(btrim(category)) = 'medicine')`,
 
   `INSERT INTO inventory (name, category, quantity, unit, minimum_stock, selling_price)
-   VALUES ('Amoxicillin 250mg', 'Medicine', 200, 'tablets', 50, 15)
-   ON CONFLICT DO NOTHING`,
+   SELECT 'Amoxicillin 250mg', 'Medicine', 200, 'tablets', 50, 15
+   WHERE NOT EXISTS (SELECT 1 FROM inventory WHERE lower(btrim(name)) = 'amoxicillin 250mg' AND lower(btrim(category)) = 'medicine')`,
 
   `INSERT INTO inventory (name, category, quantity, unit, minimum_stock, selling_price)
-   VALUES ('Syringes 5ml', 'Supplies', 500, 'units', 100, 5)
-   ON CONFLICT DO NOTHING`,
+   SELECT 'Syringes 5ml', 'Supplies', 500, 'units', 100, 5
+   WHERE NOT EXISTS (SELECT 1 FROM inventory WHERE lower(btrim(name)) = 'syringes 5ml' AND lower(btrim(category)) = 'supplies')`,
 
   `INSERT INTO inventory (name, category, quantity, unit, minimum_stock, selling_price)
-   VALUES ('Examination Gloves', 'Supplies', 1000, 'units', 200, 3)
-   ON CONFLICT DO NOTHING`,
+   SELECT 'Examination Gloves', 'Supplies', 1000, 'units', 200, 3
+   WHERE NOT EXISTS (SELECT 1 FROM inventory WHERE lower(btrim(name)) = 'examination gloves' AND lower(btrim(category)) = 'supplies')`,
 
   `INSERT INTO inventory (name, category, quantity, unit, minimum_stock, selling_price)
-   VALUES ('Stethoscope', 'Equipment', 3, 'units', 1, NULL)
-   ON CONFLICT DO NOTHING`,
+   SELECT 'Stethoscope', 'Equipment', 3, 'units', 1, NULL
+   WHERE NOT EXISTS (SELECT 1 FROM inventory WHERE lower(btrim(name)) = 'stethoscope' AND lower(btrim(category)) = 'equipment')`,
 
   `INSERT INTO inventory (name, category, quantity, unit, minimum_stock, selling_price)
-   VALUES ('Digital Thermometer', 'Equipment', 5, 'units', 2, NULL)
-   ON CONFLICT DO NOTHING`,
+   SELECT 'Digital Thermometer', 'Equipment', 5, 'units', 2, NULL
+   WHERE NOT EXISTS (SELECT 1 FROM inventory WHERE lower(btrim(name)) = 'digital thermometer' AND lower(btrim(category)) = 'equipment')`,
 ];
 
 let isInitialized = false;

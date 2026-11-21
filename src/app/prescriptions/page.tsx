@@ -47,6 +47,7 @@ export default function PrescriptionsPage() {
   const [directorySaving, setDirectorySaving] = useState(false);
   const [directoryOpen, setDirectoryOpen] = useState(false);
   const [directoryClassFilter, setDirectoryClassFilter] = useState("all");
+  const [directoryQuery, setDirectoryQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -79,9 +80,16 @@ export default function PrescriptionsPage() {
   const selectedPet = pets.find((pet) => String(pet.id) === petId);
   const weight = weightMode === "manual" ? manualWeight : selectedPet?.weight || "";
   const directoryClasses = Array.from(new Set(medicines.map((medicine) => medicine.medicineClass || "Unclassified"))).sort();
-  const filteredDirectoryMedicines = directoryClassFilter === "all"
-    ? medicines
-    : medicines.filter((medicine) => (medicine.medicineClass || "Unclassified") === directoryClassFilter);
+  const filteredDirectoryMedicines = medicines.filter((medicine) => {
+    const matchesClass = directoryClassFilter === "all" || (medicine.medicineClass || "Unclassified") === directoryClassFilter;
+    const needle = directoryQuery.trim().toLowerCase();
+    const matchesQuery = !needle || [
+      medicine.name,
+      medicine.medicineClass || "",
+      medicine.concentration || "",
+    ].some((value) => value.toLowerCase().includes(needle));
+    return matchesClass && matchesQuery;
+  });
   const updateRow = (id: number, patch: Partial<MedicineRow>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   const matching = (row: MedicineRow) => medicines.filter((medicine) => medicine.name.toLowerCase().includes((query[row.id] || "").toLowerCase())).slice(0, 6);
   const chooseMedicine = (row: MedicineRow, medicine: Medicine) => {
@@ -184,6 +192,18 @@ export default function PrescriptionsPage() {
           </div>
           {directoryClassFilter !== "all" && <button type="button" onClick={() => setDirectoryClassFilter("all")} className="inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-white px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-100"><RotateCcw size={14} />Show all</button>}
         </div>
+        <label className="mt-3 block text-xs font-medium text-teal-950">
+          Search medicine directory
+          <div className="relative mt-1">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-teal-600" />
+            <input
+              value={directoryQuery}
+              onChange={(event) => setDirectoryQuery(event.target.value)}
+              placeholder="Search by name, class, or concentration"
+              className="w-full rounded-lg border border-teal-300 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600"
+            />
+          </div>
+        </label>
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" onClick={() => setDirectoryClassFilter("all")} className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${directoryClassFilter === "all" ? "border-teal-700 bg-teal-700 text-white" : "border-teal-200 bg-white text-teal-800 hover:border-teal-500 hover:bg-teal-100"}`}>All classes <span className="ml-1 opacity-75">({medicines.length})</span></button>
           {directoryClasses.map((medicineClass) => {

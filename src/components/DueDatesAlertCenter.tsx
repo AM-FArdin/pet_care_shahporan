@@ -65,6 +65,7 @@ export default function DueDatesAlertCenter() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<AlertTab>("all");
+  const [completingId, setCompletingId] = useState<string | null>(null);
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -81,6 +82,29 @@ export default function DueDatesAlertCenter() {
       setLoading(false);
     }
   }, []);
+
+  const markReminderDone = async (item: DueDateAlertItem) => {
+    if (!window.confirm(`Mark "${item.title}" as done and remove it from active reminders?`)) return;
+    setCompletingId(item.id);
+    try {
+      const response = await fetch("/api/alerts/due-dates/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceType: item.sourceType,
+          sourceId: item.sourceId,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to mark reminder done.");
+      setAlerts((current) => current.filter((alert) => alert.id !== item.id));
+      await fetchAlerts();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to mark reminder done.");
+    } finally {
+      setCompletingId(null);
+    }
+  };
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void fetchAlerts(), 0);
@@ -391,6 +415,17 @@ export default function DueDatesAlertCenter() {
 
                     {/* Right: Interactive One-Click Actions */}
                     <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100">
+                      <button
+                        type="button"
+                        onClick={() => void markReminderDone(item)}
+                        disabled={completingId === item.id}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                        title="Mark this reminder done and remove it from active reminders"
+                      >
+                        <CheckCircle2 size={14} />
+                        <span>{completingId === item.id ? "Saving..." : "Mark Done"}</span>
+                      </button>
+
                       {/* WhatsApp Button */}
                       <a
                         href={item.whatsappUrl}

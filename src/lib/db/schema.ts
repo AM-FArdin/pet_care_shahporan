@@ -74,6 +74,7 @@ export const inventory = pgTable("inventory", {
   expiryDate: date("expiry_date"),
   batchNumber: varchar("batch_number", { length: 100 }),
   location: varchar("location", { length: 100 }),
+  barcode: varchar("barcode", { length: 100 }),
   concentration: varchar("concentration", { length: 100 }),
   medicineSource: varchar("medicine_source", { length: 500 }),
   isActive: boolean("is_active").default(true).notNull(),
@@ -106,6 +107,14 @@ export const clinicServices = pgTable("clinic_services", {
   fee: numeric("fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
   isActive: boolean("is_active").default(true).notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const reminderCompletions = pgTable("reminder_completions", {
+  id: serial("id").primaryKey(),
+  sourceType: varchar("source_type", { length: 30 }).notNull(),
+  sourceId: integer("source_id").notNull(),
+  completedAt: timestamp("completed_at").defaultNow().notNull(),
+  notes: text("notes"),
 });
 
 export const appointments = pgTable("appointments", {

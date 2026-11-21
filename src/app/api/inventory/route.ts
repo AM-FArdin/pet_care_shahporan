@@ -1,7 +1,7 @@
 import { db, isDbConfigured } from "@/lib/db";
 import { ensureTablesExist } from "@/lib/db/init";
 import { inventory } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, ilike } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -53,10 +53,41 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    const normalizedName = body.name.trim();
+    const normalizedCategory = body.category.trim();
+    const [existing] = await db
+      .select({ id: inventory.id })
+      .from(inventory)
+      .where(and(
+        ilike(inventory.name, normalizedName),
+        ilike(inventory.category, normalizedCategory),
+        eq(inventory.isActive, true)
+      ))
+      .limit(1);
+    if (existing) {
+      return NextResponse.json(
+        { error: "This product already exists in the same category. Edit the existing item instead." },
+        { status: 409 }
+      );
+    }
+    const normalizedBarcode = typeof body.barcode === "string" ? body.barcode.trim() : "";
+    if (normalizedBarcode) {
+      const [barcodeExisting] = await db
+        .select({ id: inventory.id })
+        .from(inventory)
+        .where(and(eq(inventory.barcode, normalizedBarcode), eq(inventory.isActive, true)))
+        .limit(1);
+      if (barcodeExisting) {
+        return NextResponse.json(
+          { error: "This barcode is already assigned to another inventory item." },
+          { status: 409 }
+        );
+      }
+    }
 
     const payload = {
-      name: body.name.trim(),
-      category: body.category.trim(),
+      name: normalizedName,
+      category: normalizedCategory,
       description: body.description?.trim() || null,
       quantity:
         body.quantity !== undefined && body.quantity !== null && String(body.quantity).trim() !== ""
@@ -79,6 +110,7 @@ export async function POST(req: NextRequest) {
       expiryDate: body.expiryDate?.trim() || null,
       batchNumber: body.batchNumber?.trim() || null,
       location: body.location?.trim() || null,
+      barcode: normalizedBarcode || null,
       concentration: body.concentration?.trim() || null,
       medicineSource: body.medicineSource?.trim() || null,
       isActive: true,

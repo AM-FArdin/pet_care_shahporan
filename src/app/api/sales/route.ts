@@ -66,10 +66,34 @@ export async function GET(req: NextRequest) {
       if (saleTime >= startOfMonth) monthRevenue += amount;
     }
 
+    const lineItems = await db
+      .select({
+        saleId: saleItems.saleId,
+        itemType: saleItems.itemType,
+        inventoryCategory: inventory.category,
+        totalPrice: saleItems.totalPrice,
+      })
+      .from(saleItems)
+      .leftJoin(inventory, eq(saleItems.inventoryId, inventory.id));
+
+    let petFoodAccessoriesRevenue = 0;
+    let medicalServicesDrugsRevenue = 0;
+    for (const line of lineItems) {
+      const amount = Number(line.totalPrice) || 0;
+      const category = (line.inventoryCategory || "").trim().toLowerCase();
+      if (line.itemType === "product" && ["pet food", "litter", "accessories"].includes(category)) {
+        petFoodAccessoriesRevenue += amount;
+      } else {
+        medicalServicesDrugsRevenue += amount;
+      }
+    }
+
     return NextResponse.json({
       sales: allSales,
       summary: {
         totalRevenue: totalRevenue.toFixed(2),
+        petFoodAccessoriesRevenue: petFoodAccessoriesRevenue.toFixed(2),
+        medicalServicesDrugsRevenue: medicalServicesDrugsRevenue.toFixed(2),
         totalSalesCount: allSales.length,
         totalDiscounts: totalDiscounts.toFixed(2),
         todayRevenue: todayRevenue.toFixed(2),
@@ -152,6 +176,30 @@ export async function POST(req: NextRequest) {
       await ensureTablesExist();
     } catch (e) {
       console.warn("ensureTablesExist warning:", e);
+    }
+
+    const requestedByInventory = new Map<number, number>();
+    for (const item of items) {
+      if (item.inventoryId) {
+        const inventoryId = parseInt(item.inventoryId);
+        const quantity = parseInt(item.quantity) || 1;
+        requestedByInventory.set(inventoryId, (requestedByInventory.get(inventoryId) || 0) + quantity);
+      }
+    }
+    for (const [inventoryId, requestedQuantity] of requestedByInventory) {
+      const [stockItem] = await db
+        .select({ name: inventory.name, quantity: inventory.quantity, isActive: inventory.isActive })
+        .from(inventory)
+        .where(eq(inventory.id, inventoryId));
+      if (!stockItem || !stockItem.isActive) {
+        return NextResponse.json({ error: "One of the selected inventory items is no longer available." }, { status: 409 });
+      }
+      if (stockItem.quantity < requestedQuantity) {
+        return NextResponse.json(
+          { error: `Insufficient stock for ${stockItem.name}. Available: ${stockItem.quantity}, requested: ${requestedQuantity}.` },
+          { status: 409 }
+        );
+      }
     }
 
     // Insert sale and get back the new row

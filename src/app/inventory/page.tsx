@@ -5,12 +5,15 @@ import type { InventoryItem } from "@/lib/db/schema";
 import * as XLSX from "xlsx";
 import LowStockModal from "@/components/LowStockModal";
 
-const CATEGORIES = ["Vaccine", "Medicine", "Equipment", "Supplies", "Other"];
+const CATEGORIES = ["Vaccine", "Medicine", "Pet Food", "Litter", "Accessories", "Equipment", "Supplies", "Other"];
 const UNITS = ["units", "doses", "tablets", "ml", "mg", "kg", "boxes", "vials"];
 
 const categoryColors: Record<string, string> = {
   Vaccine: "bg-teal-100 text-teal-700",
   Medicine: "bg-blue-100 text-blue-700",
+  "Pet Food": "bg-orange-100 text-orange-700",
+  Litter: "bg-yellow-100 text-yellow-700",
+  Accessories: "bg-pink-100 text-pink-700",
   Equipment: "bg-purple-100 text-purple-700",
   Supplies: "bg-amber-100 text-amber-700",
   Other: "bg-gray-100 text-gray-700",
@@ -20,6 +23,7 @@ const emptyForm = {
   name: "", category: "Medicine", description: "", quantity: "0", unit: "units",
   minimumStock: "5", costPrice: "", sellingPrice: "", supplier: "",
   expiryDate: "", batchNumber: "", location: "",
+  barcode: "",
 };
 
 export default function InventoryPage() {
@@ -87,13 +91,13 @@ export default function InventoryPage() {
     return () => window.clearTimeout(timer);
   }, [fetchItems]);
 
-  const saveServiceFee = async (service: { id: number; fee: string }) => {
+  const saveServiceFee = async (service: { id: number; name: string; fee: string }) => {
     setSavingServiceId(service.id);
     try {
       const res = await fetch(`/api/clinic-services/${service.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fee: service.fee }),
+        body: JSON.stringify({ name: service.name, fee: service.fee }),
       });
       if (!res.ok) alert("Failed to update service fee.");
     } finally {
@@ -152,7 +156,7 @@ export default function InventoryPage() {
   });
 
   const filtered = sortedItems.filter((item) => {
-    const matchQ = query === "" || item.name.toLowerCase().includes(query.toLowerCase()) || item.category.toLowerCase().includes(query.toLowerCase());
+    const matchQ = query === "" || item.name.toLowerCase().includes(query.toLowerCase()) || item.category.toLowerCase().includes(query.toLowerCase()) || (item.barcode || "").toLowerCase().includes(query.toLowerCase());
     const matchCat = categoryFilter === "All" || item.category === categoryFilter;
     const matchLowOnly = !showOnlyLowStock || (item.minimumStock !== null && item.quantity <= item.minimumStock);
     return matchQ && matchCat && matchLowOnly;
@@ -195,6 +199,7 @@ export default function InventoryPage() {
       minimumStock: String(item.minimumStock ?? 5), costPrice: item.costPrice || "",
       sellingPrice: item.sellingPrice || "", supplier: item.supplier || "",
       expiryDate: item.expiryDate || "", batchNumber: item.batchNumber || "", location: item.location || "",
+      barcode: item.barcode || "",
     });
     setShowForm(true);
   };
@@ -387,7 +392,12 @@ export default function InventoryPage() {
         </div>
         {services.filter((service) => service.id === selectedServiceId).map((service) => (
           <div key={service.id} className="rounded-lg border border-teal-200 bg-teal-50/40 p-3 flex flex-col sm:flex-row sm:items-center gap-3">
-            <p className="flex-1 text-sm font-medium text-gray-700">{service.name}</p>
+            <input
+              value={service.name}
+              onChange={(e) => setServices((current) => current.map((item) => item.id === service.id ? { ...item, name: e.target.value } : item))}
+              className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium text-gray-700"
+              aria-label={`${service.name} name`}
+            />
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-500">৳</span>
               <input min="0" step="0.01" type="number" value={service.fee} onChange={(e) => setServices((current) => current.map((item) => item.id === service.id ? { ...item, fee: e.target.value } : item))} className="w-32 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" aria-label={`${service.name} fee`} />
@@ -693,6 +703,11 @@ export default function InventoryPage() {
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Storage Location</label>
                   <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="e.g. Fridge, Shelf A" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Barcode / QR Code</label>
+                  <input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} placeholder="Scan or enter barcode" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                  <p className="mt-1 text-[11px] text-gray-500">A USB/Bluetooth scanner can type this value and press Enter.</p>
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>

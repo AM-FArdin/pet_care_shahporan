@@ -1,6 +1,6 @@
 import { db, isDbConfigured } from "@/lib/db";
 import { inventory } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, ilike, ne } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +49,46 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (body.expiryDate !== undefined) updateData.expiryDate = body.expiryDate?.trim() || null;
     if (body.batchNumber !== undefined) updateData.batchNumber = body.batchNumber?.trim() || null;
     if (body.location !== undefined) updateData.location = body.location?.trim() || null;
+    if (body.barcode !== undefined) updateData.barcode = body.barcode?.trim() || null;
     if (body.isActive !== undefined) updateData.isActive = Boolean(body.isActive);
+
+    const nextName = typeof body.name === "string" ? body.name.trim() : null;
+    const nextCategory = typeof body.category === "string" ? body.category.trim() : null;
+    if (nextName && nextCategory) {
+      const [existing] = await db
+        .select({ id: inventory.id })
+        .from(inventory)
+        .where(and(
+          ilike(inventory.name, nextName),
+          ilike(inventory.category, nextCategory),
+          eq(inventory.isActive, true),
+          ne(inventory.id, parseInt(id))
+        ))
+        .limit(1);
+      if (existing) {
+        return NextResponse.json(
+          { error: "Another active item already uses this name and category." },
+          { status: 409 }
+        );
+      }
+    }
+    if (typeof body.barcode === "string" && body.barcode.trim()) {
+      const [barcodeExisting] = await db
+        .select({ id: inventory.id })
+        .from(inventory)
+        .where(and(
+          eq(inventory.barcode, body.barcode.trim()),
+          eq(inventory.isActive, true),
+          ne(inventory.id, parseInt(id))
+        ))
+        .limit(1);
+      if (barcodeExisting) {
+        return NextResponse.json(
+          { error: "Another active item is already using this barcode." },
+          { status: 409 }
+        );
+      }
+    }
 
     const [updated] = await db
       .update(inventory)

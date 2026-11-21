@@ -7,7 +7,22 @@ const DEFAULT_SECRET = "shahporan-vet-admin-secure-auth-secret-key-2026";
 export const COOKIE_NAME = "admin_session";
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
+function getSessionSecret(): string {
+  const secret = process.env.ADMIN_SESSION_SECRET?.trim();
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("ADMIN_SESSION_SECRET is required in production.");
+  }
+  return DEFAULT_SECRET;
+}
+
 export function getAdminCredentials() {
+  if (process.env.NODE_ENV === "production" && !process.env.ADMIN_PASSWORD) {
+    return {
+      username: process.env.ADMIN_USERNAME?.trim() || "admin",
+      password: "",
+    };
+  }
   return {
     username: process.env.ADMIN_USERNAME?.trim() || DEFAULT_ADMIN_USERNAME,
     password: process.env.ADMIN_PASSWORD?.trim() || DEFAULT_ADMIN_PASSWORD,
@@ -81,7 +96,7 @@ export interface SessionPayload {
 }
 
 export async function createSessionToken(username: string): Promise<string> {
-  const secret = process.env.ADMIN_SESSION_SECRET || DEFAULT_SECRET;
+  const secret = getSessionSecret();
   const key = await getCryptoKey(secret);
   
   const payload: SessionPayload = {
@@ -105,7 +120,7 @@ export async function verifySessionToken(token: string | undefined | null): Prom
 
   const [payloadEncoded, signatureEncoded] = parts;
   try {
-    const secret = process.env.ADMIN_SESSION_SECRET || DEFAULT_SECRET;
+    const secret = getSessionSecret();
     const key = await getCryptoKey(secret);
 
     // Decode signature
