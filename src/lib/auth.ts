@@ -10,19 +10,10 @@ export const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 function getSessionSecret(): string {
   const secret = process.env.ADMIN_SESSION_SECRET?.trim();
   if (secret) return secret;
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("ADMIN_SESSION_SECRET is required in production.");
-  }
   return DEFAULT_SECRET;
 }
 
 export function getAdminCredentials() {
-  if (process.env.NODE_ENV === "production" && !process.env.ADMIN_PASSWORD) {
-    return {
-      username: process.env.ADMIN_USERNAME?.trim() || "admin",
-      password: "",
-    };
-  }
   return {
     username: process.env.ADMIN_USERNAME?.trim() || DEFAULT_ADMIN_USERNAME,
     password: process.env.ADMIN_PASSWORD?.trim() || DEFAULT_ADMIN_PASSWORD,

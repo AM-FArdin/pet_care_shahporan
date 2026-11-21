@@ -4,16 +4,12 @@ import { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle,
   X,
-  Package,
   Plus,
   Download,
   Loader2,
   CheckCircle2,
   Search,
-  ExternalLink,
-  RefreshCw,
   Building2,
-  Phone,
 } from "lucide-react";
 import type { InventoryItem } from "@/lib/db/schema";
 import * as XLSX from "xlsx";

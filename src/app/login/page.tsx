@@ -2,11 +2,10 @@
 
 import { useState, Suspense } from "react";
 import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Lock, User, Eye, EyeOff, ShieldCheck, AlertCircle, Loader2, ArrowRight } from "lucide-react";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const redirectUrl = searchParams.get("redirect") || "/";
 

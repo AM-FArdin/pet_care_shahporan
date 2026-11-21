@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
   },
   /* config options here */
   turbopack: {
+    root: process.cwd(),
     rules: {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],

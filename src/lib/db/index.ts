@@ -11,7 +11,6 @@ export const isDbConfigured = Boolean(
 );
 
 // Safe dummy db for build-time prerendering when DATABASE_URL is not set
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const createFallbackDb = () => new Proxy({} as ReturnType<typeof drizzle>, {
   get: () => () => Promise.resolve([]),
 });
